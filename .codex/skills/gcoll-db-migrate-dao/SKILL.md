@@ -10,15 +10,17 @@ description: gcoll 数据库迁移与 GoFrame DAO 生成流程。用于新增或
 1. 先阅读 `docs/current/02-系统架构.md` 和 `docs/current/05-开发任务规范.md`。
 2. 在 `manifest/migrations/` 新增成对迁移 SQL：`*.up.sql` 与 `*.down.sql`。
 3. 迁移必须兼顾桌面 SQLite 和服务器 PostgreSQL 的当前策略；如果无法兼容，按 `manifest/migrations/sqlite/` 与 `manifest/migrations/pgsql/` 拆分维护，并保持同一版本文件名一致。
-4. 使用 `manifest/config/config.yaml` 中的数据库连接在仓库根目录执行迁移。
-5. 继续在仓库根目录执行 `gf gen dao`，生成 `internal/dao`、`internal/model/do`、`internal/model/entity`。
-6. 后续代码优先使用生成的 `do` 和 `entity`。
-7. 若生成结构无法满足业务场景，再在 `internal/model` 增加业务结构体。
+4. 为每张表和每个字段补充中文说明：PostgreSQL 使用 `COMMENT ON TABLE` 与 `COMMENT ON COLUMN`；SQLite 在迁移 SQL 中使用 `-- 表注释：` 和 `-- 字段注释：` 注释块记录。
+5. 使用 `manifest/config/config.yaml` 中的数据库连接在仓库根目录执行迁移。
+6. 继续在仓库根目录执行 `gf gen dao`，生成 `internal/dao`、`internal/model/do`、`internal/model/entity`；不需要生成 `internal/table` 时不要使用 `-gt`。
+7. 后续代码优先使用生成的 `do` 和 `entity`。
+8. 若生成结构无法满足业务场景，再在 `internal/model` 增加业务结构体。
 
 ## 强制要求
 
 - 数据库迁移必须显式版本化。
 - SQLite 与 PostgreSQL 写法不同的迁移必须拆分目录维护，禁止在同一 SQL 中依赖某一数据库专有语法。
+- 表名和字段必须有中文注释；缺少表注释或字段注释的迁移不得交付。
 - 采集明细不落库。
 - 敏感配置不进入普通 JSON 字段明文。
 - 设备插件配置、点位表、插件配置结构需要历史追溯时必须支持版本化。

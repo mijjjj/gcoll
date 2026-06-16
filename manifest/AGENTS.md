@@ -23,4 +23,5 @@
 - 引入数据库迁移后，迁移文件应放在 `manifest/migrations/`。
 - SQLite 与 PostgreSQL SQL 写法不一致时，迁移应拆分到 `manifest/migrations/sqlite/` 和 `manifest/migrations/pgsql/`，同一变更使用相同版本号文件名。
 - 表结构变更使用 `.codex/skills/gcoll-db-migrate-dao`。
+- 数据库迁移必须为每张表和每个字段写中文注释；PostgreSQL 使用 `COMMENT ON TABLE/COLUMN`，SQLite 使用 SQL 注释块记录表和字段说明。
 - 采集明细不落库；数据库只保存配置、任务、插件、用户、审计和必要运行状态。

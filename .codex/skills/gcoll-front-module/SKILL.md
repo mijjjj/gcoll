@@ -5,7 +5,7 @@ description: gcoll Web 控制台前端模块开发流程。用于修改 `fronten
 
 # gcoll Front Module
 
-使用本技能前先阅读 `frontend/web/AGENTS.md` 和 `docs/current/04-前端设计规范.md`。
+使用本技能前先阅读 `frontend/web/AGENTS.md`、`docs/current/04-前端设计规范.md` 和 `references/design-guidelines.md`。
 
 ## 工作流
 
@@ -25,11 +25,15 @@ description: gcoll Web 控制台前端模块开发流程。用于修改 `fronten
 - 图标按钮使用 lucide 或已有图标库，并补充 tooltip 或可访问文本。
 - 响应数据使用可选链和默认值防御 `null`、`undefined`。
 - 列表 key 使用稳定业务 ID。
+- 服务端和桌面端共享“简洁边缘桌面工作台”设计语言；桌面端更强调本机状态、连接测试、点位表和调试日志。
+- 插件自定义页面必须保留宿主标题、保存状态、权限提示、审计提示和主题同步。
+- 状态颜色不得作为唯一信息来源，必须同时提供文字或标签。
 
 ## 按需读取
 
 - 创建管理列表或 CRUD 页面时读取 `references/module-page-pattern.md`。
 - 修改菜单、路由标题、权限状态或 i18n 时读取 `references/permissions-i18n.md`。
+- 设计新页面、调整布局密度、桌面端页面或复杂状态时读取 `references/design-guidelines.md`。
 
 ## 验证
 

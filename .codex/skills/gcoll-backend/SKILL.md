@@ -13,8 +13,9 @@ description: gcoll GoFrame 后端开发流程。用于修改 `api/`、`internal/
 2. 判断变更是否影响 HTTP API、插件协议、SDK、事件格式或数据库迁移。
 3. API 结构放在 `api/<domain>/v1/`，Controller 放在 `internal/controller/<domain>/`。
 4. 业务编排放在 `internal/service/<domain>/`，MVP 阶段不新增 `logic/` 兼容层。
-5. 运行时装配、路由和中间件挂载放在 `internal/cmd` 或既有启动模块。
-6. 修改后从仓库根目录运行 `go test ./...`。
+5. `internal/service/<domain>/` 主实现文件使用 `<domain>.go` 命名；删除仅占位的 `doc.go`，不要新增泛化 `service.go`。
+6. 运行时装配、路由和中间件挂载放在 `internal/cmd` 或既有启动模块。
+7. 修改后从仓库根目录运行 `go test ./...`。
 
 ## 强制规则
 

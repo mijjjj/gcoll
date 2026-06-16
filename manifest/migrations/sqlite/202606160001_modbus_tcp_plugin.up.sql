@@ -93,3 +93,58 @@ CREATE TABLE IF NOT EXISTS modbus_tcp_debug_logs (
 
 CREATE INDEX IF NOT EXISTS idx_modbus_tcp_debug_logs_device_time
   ON modbus_tcp_debug_logs(device_id, created_at DESC);
+
+-- 表注释：modbus_tcp_device_profiles：Modbus TCP 设备级协议配置，保存宿主下发给插件的连接和采集参数。
+-- 字段注释：modbus_tcp_device_profiles.id：配置记录唯一标识。
+-- 字段注释：modbus_tcp_device_profiles.device_id：所属设备 ID。
+-- 字段注释：modbus_tcp_device_profiles.plugin_id：插件 ID，固定为 com.gcoll.modbus-tcp。
+-- 字段注释：modbus_tcp_device_profiles.version：当前设备协议配置版本号。
+-- 字段注释：modbus_tcp_device_profiles.host：Modbus TCP 设备主机地址。
+-- 字段注释：modbus_tcp_device_profiles.port：Modbus TCP 端口。
+-- 字段注释：modbus_tcp_device_profiles.unit_id：Modbus 单元 ID。
+-- 字段注释：modbus_tcp_device_profiles.timeout_ms：单次请求超时时间，单位毫秒。
+-- 字段注释：modbus_tcp_device_profiles.poll_interval_ms：采集轮询间隔，单位毫秒。
+-- 字段注释：modbus_tcp_device_profiles.report_mode：上报模式，支持 change 或 all。
+-- 字段注释：modbus_tcp_device_profiles.max_coil_batch：线圈和离散输入单次批量读取上限。
+-- 字段注释：modbus_tcp_device_profiles.max_register_batch：寄存器单次批量读取上限。
+-- 字段注释：modbus_tcp_device_profiles.low_latency_ms：自适应批量策略的低延迟阈值。
+-- 字段注释：modbus_tcp_device_profiles.high_latency_ms：自适应批量策略的高延迟阈值。
+-- 字段注释：modbus_tcp_device_profiles.debug_enabled：是否启用调试模式。
+-- 字段注释：modbus_tcp_device_profiles.enabled：该设备协议配置是否启用。
+-- 字段注释：modbus_tcp_device_profiles.created_at：记录创建时间。
+-- 字段注释：modbus_tcp_device_profiles.updated_at：记录更新时间。
+-- 字段注释：modbus_tcp_device_profiles.deleted_at：软删除时间。
+-- 表注释：modbus_tcp_point_profiles：Modbus TCP 点位协议扩展配置，保存通用点位表无法表达的区域、地址和解码参数。
+-- 字段注释：modbus_tcp_point_profiles.id：点位扩展配置唯一标识。
+-- 字段注释：modbus_tcp_point_profiles.device_id：所属设备 ID。
+-- 字段注释：modbus_tcp_point_profiles.point_id：关联的通用点位 ID。
+-- 字段注释：modbus_tcp_point_profiles.plugin_id：插件 ID，固定为 com.gcoll.modbus-tcp。
+-- 字段注释：modbus_tcp_point_profiles.version：当前点位扩展配置版本号。
+-- 字段注释：modbus_tcp_point_profiles.area：Modbus 数据区。
+-- 字段注释：modbus_tcp_point_profiles.address：从 0 开始的 Modbus 地址。
+-- 字段注释：modbus_tcp_point_profiles.quantity：点位占用的线圈或寄存器数量。
+-- 字段注释：modbus_tcp_point_profiles.mode：点位读写模式，支持 read 或 write。
+-- 字段注释：modbus_tcp_point_profiles.value_type：插件侧解码使用的值类型。
+-- 字段注释：modbus_tcp_point_profiles.byte_order：字节序。
+-- 字段注释：modbus_tcp_point_profiles.word_order：字序。
+-- 字段注释：modbus_tcp_point_profiles.scale：数值缩放系数。
+-- 字段注释：modbus_tcp_point_profiles.offset：数值偏移量。
+-- 字段注释：modbus_tcp_point_profiles.report_mode：点位上报模式。
+-- 字段注释：modbus_tcp_point_profiles.enabled：点位扩展配置是否启用。
+-- 字段注释：modbus_tcp_point_profiles.created_at：记录创建时间。
+-- 字段注释：modbus_tcp_point_profiles.updated_at：记录更新时间。
+-- 字段注释：modbus_tcp_point_profiles.deleted_at：软删除时间。
+-- 表注释：modbus_tcp_debug_logs：Modbus TCP 有限窗口调试日志，不保存长期采集明细。
+-- 字段注释：modbus_tcp_debug_logs.id：调试日志唯一标识。
+-- 字段注释：modbus_tcp_debug_logs.device_id：关联设备 ID。
+-- 字段注释：modbus_tcp_debug_logs.task_id：关联采集任务 ID。
+-- 字段注释：modbus_tcp_debug_logs.point_id：关联点位 ID。
+-- 字段注释：modbus_tcp_debug_logs.trace_id：调用链追踪 ID。
+-- 字段注释：modbus_tcp_debug_logs.level：日志级别。
+-- 字段注释：modbus_tcp_debug_logs.message：日志消息。
+-- 字段注释：modbus_tcp_debug_logs.area：本次请求涉及的 Modbus 数据区。
+-- 字段注释：modbus_tcp_debug_logs.address：本次请求起始地址。
+-- 字段注释：modbus_tcp_debug_logs.latency_ms：本次请求耗时，单位毫秒。
+-- 字段注释：modbus_tcp_debug_logs.raw_hex：原始响应摘要十六进制文本。
+-- 字段注释：modbus_tcp_debug_logs.fields_json：调试扩展字段 JSON。
+-- 字段注释：modbus_tcp_debug_logs.created_at：日志创建时间。

@@ -11,6 +11,7 @@
 - `internal/cmd` 只负责 Server 装配、配置加载、中间件挂载和路由注册。
 - `internal/controller/<domain>` 只做 HTTP 入参、上下文和响应编排，不承载复杂业务规则。
 - `internal/service/<domain>` 承载领域服务和模块编排；MVP 阶段不额外引入 `logic/` 兼容层。
+- `internal/service/<domain>/` 下默认使用与模块同名的 `<domain>.go` 作为主实现文件；不要保留仅占位的 `doc.go`，也不要使用泛化的 `service.go` 作为模块主文件名。
 - `internal/service/middleware` 统一处理响应包裹、认证、错误映射和跨域等横切逻辑。
 - `internal/dao`、`internal/model/do`、`internal/model/entity` 引入数据库表后由 GoFrame CLI 生成，不手工维护生成代码。
 

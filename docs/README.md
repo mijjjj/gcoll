@@ -9,7 +9,7 @@
 3. `docs/current/03-插件与点位协议.md`：确认插件模型、配置模型、点位表和协议边界。
 4. `docs/current/04-前端设计规范.md`：确认 Vue 前端和 Wails 桌面端的界面规范。
 5. `docs/current/05-开发任务规范.md`：确认后续 AI 开发时的任务拆分、验收和测试要求。
-6. `docs/ai/AI开发入口.md`：给 AI 执行具体开发任务时使用。
+6. `.codex/skills/gcoll-development/SKILL.md`：给 AI 执行具体开发任务时使用。
 
 ## 文档权威性
 
@@ -17,6 +17,8 @@
 - `docs/adr/` 是决策记录，用于解释为什么这么做，不直接覆盖当前规范。
 - 新增设计必须先更新 `docs/current/` 中对应规范；只有出现不可逆或对外契约相关的取舍时，才新增 ADR。
 - 不再维护分散的旧版产品、架构、设计草稿；避免同一规则在多处重复出现。
+- AI 执行流程、本地验证默认规则和任务描述模板维护在 `.codex/skills/gcoll-development/SKILL.md`。
+- 前端视觉细节和页面状态实现指南维护在 `.codex/skills/gcoll-front-module/references/design-guidelines.md`。
 
 ## 当前技术基线
 

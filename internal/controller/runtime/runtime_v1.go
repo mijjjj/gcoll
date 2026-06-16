@@ -31,14 +31,19 @@ func (c *ControllerV1) Health(ctx context.Context, req *runtimev1.HealthReq) (re
 func (c *ControllerV1) Overview(ctx context.Context, req *runtimev1.OverviewReq) (res *runtimev1.OverviewRes, err error) {
 	_ = req
 
-	return c.runtimeSvc.GetOverview(ctx), nil
+	return c.runtimeSvc.GetOverview(ctx)
 }
 
 // Plugins 返回本地插件列表。
 func (c *ControllerV1) Plugins(ctx context.Context, req *runtimev1.PluginsReq) (res *runtimev1.PluginsRes, err error) {
 	_ = req
 
-	return c.runtimeSvc.GetPlugins(ctx), nil
+	return c.runtimeSvc.GetPlugins(ctx)
+}
+
+// ImportPlugin 导入插件清单。
+func (c *ControllerV1) ImportPlugin(ctx context.Context, req *runtimev1.ImportPluginReq) (res *runtimev1.ImportPluginRes, err error) {
+	return c.runtimeSvc.ImportPlugin(ctx, req.PackagePath)
 }
 
 // ModbusTcpDeviceConfigPage 返回当前设备的 Modbus TCP 协议配置页数据。
@@ -50,19 +55,29 @@ func (c *ControllerV1) ModbusTcpDeviceConfigPage(ctx context.Context, req *runti
 func (c *ControllerV1) Devices(ctx context.Context, req *runtimev1.DevicesReq) (res *runtimev1.DevicesRes, err error) {
 	_ = req
 
-	return c.runtimeSvc.GetDevices(ctx), nil
+	return c.runtimeSvc.GetDevices(ctx)
+}
+
+// CreateDevice 新增设备。
+func (c *ControllerV1) CreateDevice(ctx context.Context, req *runtimev1.CreateDeviceReq) (res *runtimev1.CreateDeviceRes, err error) {
+	return c.runtimeSvc.CreateDevice(ctx, req)
 }
 
 // DevicePoints 返回指定设备的点位列表。
 func (c *ControllerV1) DevicePoints(ctx context.Context, req *runtimev1.DevicePointsReq) (res *runtimev1.DevicePointsRes, err error) {
-	return c.runtimeSvc.GetDevicePoints(ctx, req.DeviceId), nil
+	return c.runtimeSvc.GetDevicePoints(ctx, req.DeviceId)
+}
+
+// CreateDevicePoint 新增指定设备的点位。
+func (c *ControllerV1) CreateDevicePoint(ctx context.Context, req *runtimev1.CreateDevicePointReq) (res *runtimev1.CreateDevicePointRes, err error) {
+	return c.runtimeSvc.CreateDevicePoint(ctx, req)
 }
 
 // Tasks 返回采集任务列表。
 func (c *ControllerV1) Tasks(ctx context.Context, req *runtimev1.TasksReq) (res *runtimev1.TasksRes, err error) {
 	_ = req
 
-	return c.runtimeSvc.GetTasks(ctx), nil
+	return c.runtimeSvc.GetTasks(ctx)
 }
 
 // PointCache 返回最新点位缓存。
@@ -90,5 +105,5 @@ func (c *ControllerV1) Targets(ctx context.Context, req *runtimev1.TargetsReq) (
 func (c *ControllerV1) Logs(ctx context.Context, req *runtimev1.LogsReq) (res *runtimev1.LogsRes, err error) {
 	_ = req
 
-	return c.runtimeSvc.GetLogs(ctx), nil
+	return c.runtimeSvc.GetLogs(ctx)
 }

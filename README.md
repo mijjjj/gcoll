@@ -255,7 +255,7 @@ gcoll/
 5. `docs/current/04-前端设计规范.md`
 6. `docs/current/05-开发任务规范.md`
 
-需要让 AI 按项目方式持续开发时，优先阅读 `docs/ai/AI开发入口.md`。历史决策背景见 `docs/adr/`，但当前有效设计始终以 `docs/current/` 为准。
+需要让 AI 按项目方式持续开发时，优先使用 `.codex/skills/gcoll-development`。历史决策背景见 `docs/adr/`，但当前有效设计始终以 `docs/current/` 为准。
 
 ## 协作约束
 

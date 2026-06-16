@@ -23,6 +23,17 @@ type PluginsReq struct {
 	g.Meta `path:"/plugins" method:"get" tags:"Plugins" summary:"获取插件列表"`
 }
 
+// ImportPluginReq 描述插件导入请求。
+type ImportPluginReq struct {
+	g.Meta      `path:"/plugins/import" method:"post" tags:"Plugins" summary:"导入插件清单"`
+	PackagePath string `json:"packagePath" v:"required#插件包路径不能为空"`
+}
+
+// ImportPluginRes 描述插件导入响应。
+type ImportPluginRes struct {
+	Plugin PluginItem `json:"plugin"`
+}
+
 // ModbusTcpDeviceConfigPageReq 描述 Modbus TCP 设备协议配置页请求。
 type ModbusTcpDeviceConfigPageReq struct {
 	g.Meta   `path:"/devices/{deviceId}/protocol-config" method:"get" tags:"Devices" summary:"获取设备协议配置页数据"`
@@ -51,6 +62,25 @@ type DevicesReq struct {
 	g.Meta `path:"/devices" method:"get" tags:"Devices" summary:"获取设备列表"`
 }
 
+// CreateDeviceReq 描述新增设备请求。
+type CreateDeviceReq struct {
+	g.Meta      `path:"/devices" method:"post" tags:"Devices" summary:"新增设备"`
+	Id          string         `json:"id"`
+	Name        string         `json:"name" v:"required#设备名称不能为空"`
+	Code        string         `json:"code" v:"required#设备编码不能为空"`
+	GroupId     string         `json:"groupId" v:"required#设备分组不能为空"`
+	PluginId    string         `json:"pluginId" v:"required#设备插件不能为空"`
+	Enabled     bool           `json:"enabled"`
+	ReportMode  string         `json:"reportMode" v:"required|in:change,all#上报模式不能为空|上报模式只能是 change 或 all"`
+	Description string         `json:"description"`
+	Config      map[string]any `json:"config" v:"required#设备插件配置不能为空"`
+}
+
+// CreateDeviceRes 描述新增设备响应。
+type CreateDeviceRes struct {
+	Device DeviceItem `json:"device"`
+}
+
 // DevicesRes 描述设备列表响应。
 type DevicesRes struct {
 	Groups []DeviceGroup `json:"groups"`
@@ -61,6 +91,27 @@ type DevicesRes struct {
 type DevicePointsReq struct {
 	g.Meta   `path:"/devices/{deviceId}/points" method:"get" tags:"Devices" summary:"获取设备点位列表"`
 	DeviceId string `json:"deviceId" in:"path"`
+}
+
+// CreateDevicePointReq 描述新增设备点位请求。
+type CreateDevicePointReq struct {
+	g.Meta      `path:"/devices/{deviceId}/points" method:"post" tags:"Devices" summary:"新增设备点位"`
+	DeviceId    string            `json:"deviceId" in:"path"`
+	Id          string            `json:"id"`
+	PluginId    string            `json:"pluginId" v:"required#点位插件不能为空"`
+	Name        string            `json:"name" v:"required#点位名称不能为空"`
+	Description string            `json:"description"`
+	Address     string            `json:"address" v:"required#点位地址不能为空"`
+	ValueType   string            `json:"valueType" v:"required|in:bool,int,float,string,bytes,datetime,json#值类型不能为空|值类型不支持"`
+	Unit        string            `json:"unit"`
+	Enabled     bool              `json:"enabled"`
+	Tags        map[string]string `json:"tags"`
+	Metadata    map[string]any    `json:"metadata"`
+}
+
+// CreateDevicePointRes 描述新增设备点位响应。
+type CreateDevicePointRes struct {
+	Point PointItem `json:"point"`
 }
 
 // DevicePointsRes 描述设备点位列表响应。
@@ -209,6 +260,7 @@ type PointItem struct {
 	Unit        string            `json:"unit"`
 	Enabled     bool              `json:"enabled"`
 	Tags        map[string]string `json:"tags"`
+	Metadata    map[string]any    `json:"metadata,omitempty"`
 }
 
 // TaskSummary 描述采集任务摘要。
