@@ -787,6 +787,26 @@ textarea {
   overflow: auto;
 }
 
+.device-protocol-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 14px;
+  margin-top: 12px;
+}
+
+.protocol-optimizer {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.protocol-optimizer > strong,
+.read-plan-panel > strong {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 19px;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -884,6 +904,13 @@ textarea {
 .test-meta dd {
   margin: 0;
   color: var(--color-text-primary);
+}
+
+.read-plan-panel {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  min-width: 0;
 }
 
 .debug-log {
@@ -1034,5 +1061,9 @@ textarea {
 
   .detail-body {
     grid-template-columns: minmax(420px, 1fr) 360px;
+  }
+
+  .device-protocol-form {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

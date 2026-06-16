@@ -68,6 +68,76 @@ export interface PluginItem {
   updatedAt: string
 }
 
+export interface ModbusTcpDeviceConfig {
+  host: string
+  port: number
+  unitId: number
+  timeoutMs: number
+  pollIntervalMs: number
+  reportMode: string
+  debugEnabled: boolean
+  maxCoilBatch: number
+  maxRegisterBatch: number
+  lowLatencyMs: number
+  highLatencyMs: number
+}
+
+export interface ModbusTcpReadBlock {
+  area: string
+  start: number
+  quantity: number
+  pointIds: string[]
+  latencyMs: number
+}
+
+export interface ModbusTcpPoint {
+  id: string
+  name: string
+  area: string
+  address: number
+  quantity: number
+  valueType: string
+  mode: string
+  reportMode: string
+  enabled: boolean
+  byteOrder: string
+  wordOrder: string
+  scale: string
+  current: string
+  quality: string
+  lastReadAt: string
+  description: string
+}
+
+export interface ModbusTcpDebugLog {
+  time: string
+  level: string
+  message: string
+  traceId: string
+  area: string
+  address: string
+  costMs: number
+  rawHex: string
+}
+
+export interface ModbusTcpOperation {
+  key: string
+  label: string
+  description: string
+  enabled: boolean
+}
+
+export interface ModbusTcpDeviceConfigPage {
+  plugin: PluginItem
+  device: DeviceItem
+  config: ModbusTcpDeviceConfig
+  readPlan: ModbusTcpReadBlock[]
+  points: ModbusTcpPoint[]
+  debugLogs: ModbusTcpDebugLog[]
+  operations: ModbusTcpOperation[]
+  warnings: string[]
+}
+
 export interface DeviceGroup {
   id: string
   name: string
@@ -178,6 +248,7 @@ export const consoleApi = {
   getOverview: () => request<OverviewData>('/runtime/overview'),
   getPlugins: () => request<{ items: PluginItem[] }>('/plugins'),
   getDevices: () => request<{ groups: DeviceGroup[]; items: DeviceItem[] }>('/devices'),
+  getModbusTcpDeviceConfigPage: (deviceId: string) => request<ModbusTcpDeviceConfigPage>(`/devices/${deviceId}/protocol-config`),
   getDevicePoints: (deviceId: string) => request<{ items: PointItem[] }>(`/devices/${deviceId}/points`),
   getTasks: () => request<{ items: TaskSummary[] }>('/tasks'),
   getPointCache: () => request<{ items: PointCacheItem[] }>('/point-cache'),

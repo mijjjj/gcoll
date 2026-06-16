@@ -1,0 +1,253 @@
+syntax = "proto3";
+
+package gcoll.plugin.v1;
+
+option go_package = "github.com/mijjjj/gcoll/api/proto/plugin/v1;pluginv1";
+
+message RequestContext {
+  string request_id = 1;
+  string trace_id = 2;
+  string device_id = 3;
+  string task_id = 4;
+  string plugin_id = 5;
+  string plugin_version = 6;
+  int64 deadline_unix_ms = 7;
+}
+
+message PluginManifest {
+  string schema_version = 1;
+  string id = 2;
+  string name = 3;
+  string type = 4;
+  string version = 5;
+  string runtime = 6;
+  string protocol = 7;
+  repeated string capabilities = 8;
+  repeated string permissions = 9;
+  string config_schema_json = 10;
+  bool custom_config_page_enabled = 11;
+}
+
+message HandshakeRequest {
+  RequestContext context = 1;
+  string host_id = 2;
+  string host_version = 3;
+  string plugin_protocol_version = 4;
+}
+
+message HandshakeResponse {
+  bool accepted = 1;
+  string reason = 2;
+  PluginManifest manifest = 3;
+}
+
+message GetManifestRequest {
+  RequestContext context = 1;
+}
+
+message GetManifestResponse {
+  PluginManifest manifest = 1;
+}
+
+message GetConfigSchemaRequest {
+  RequestContext context = 1;
+}
+
+message GetConfigSchemaResponse {
+  string schema_json = 1;
+}
+
+message ValidateConfigRequest {
+  RequestContext context = 1;
+  string device_config_json = 2;
+  repeated PointConfig points = 3;
+}
+
+message ValidateConfigResponse {
+  bool valid = 1;
+  repeated ValidationIssue issues = 2;
+}
+
+message ValidationIssue {
+  string field = 1;
+  string message = 2;
+}
+
+message ConfigureRequest {
+  RequestContext context = 1;
+  string device_config_json = 2;
+  repeated PointConfig points = 3;
+}
+
+message ConfigureResponse {
+  bool accepted = 1;
+}
+
+message StartRequest {
+  RequestContext context = 1;
+}
+
+message StartResponse {
+  bool started = 1;
+}
+
+message StopRequest {
+  RequestContext context = 1;
+}
+
+message StopResponse {
+  bool stopped = 1;
+}
+
+message HealthRequest {
+  RequestContext context = 1;
+}
+
+message HealthResponse {
+  string status = 1;
+  string message = 2;
+  map<string, string> metrics = 3;
+}
+
+message SetDebugModeRequest {
+  RequestContext context = 1;
+  bool enabled = 2;
+}
+
+message SetDebugModeResponse {
+  bool enabled = 1;
+}
+
+service PluginRuntimeService {
+  rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
+  rpc GetManifest(GetManifestRequest) returns (GetManifestResponse);
+  rpc GetConfigSchema(GetConfigSchemaRequest) returns (GetConfigSchemaResponse);
+  rpc ValidateConfig(ValidateConfigRequest) returns (ValidateConfigResponse);
+  rpc Configure(ConfigureRequest) returns (ConfigureResponse);
+  rpc Start(StartRequest) returns (StartResponse);
+  rpc Stop(StopRequest) returns (StopResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc SetDebugMode(SetDebugModeRequest) returns (SetDebugModeResponse);
+}
+
+message TestConnectionRequest {
+  RequestContext context = 1;
+  string device_config_json = 2;
+}
+
+message TestConnectionResponse {
+  bool success = 1;
+  int64 latency_ms = 2;
+  string message = 3;
+}
+
+message StartCollectionRequest {
+  RequestContext context = 1;
+}
+
+message StartCollectionResponse {
+  bool started = 1;
+}
+
+message StopCollectionRequest {
+  RequestContext context = 1;
+}
+
+message StopCollectionResponse {
+  bool stopped = 1;
+}
+
+message ReadOnceRequest {
+  RequestContext context = 1;
+  string device_config_json = 2;
+  repeated PointConfig points = 3;
+}
+
+message ReadOnceResponse {
+  repeated CollectionRecord records = 1;
+  repeated DebugLog debug_logs = 2;
+}
+
+message WritePointRequest {
+  RequestContext context = 1;
+  string device_config_json = 2;
+  repeated PointConfig points = 3;
+  string point_id = 4;
+  string value_json = 5;
+}
+
+message WritePointResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+service SouthboundService {
+  rpc TestConnection(TestConnectionRequest) returns (TestConnectionResponse);
+  rpc StartCollection(StartCollectionRequest) returns (StartCollectionResponse);
+  rpc StopCollection(StopCollectionRequest) returns (StopCollectionResponse);
+  rpc ReadOnce(ReadOnceRequest) returns (ReadOnceResponse);
+  rpc WritePoint(WritePointRequest) returns (WritePointResponse);
+}
+
+message SubmitRecordsRequest {
+  RequestContext context = 1;
+  repeated CollectionRecord records = 2;
+}
+
+message SubmitRecordsResponse {
+  bool accepted = 1;
+  string backpressure = 2;
+}
+
+message ReportDebugLogsRequest {
+  RequestContext context = 1;
+  repeated DebugLog logs = 2;
+}
+
+message ReportDebugLogsResponse {
+  bool accepted = 1;
+}
+
+service HostIngestService {
+  rpc SubmitRecords(stream SubmitRecordsRequest) returns (SubmitRecordsResponse);
+  rpc ReportDebugLogs(ReportDebugLogsRequest) returns (ReportDebugLogsResponse);
+}
+
+message PointConfig {
+  string id = 1;
+  string device_id = 2;
+  string plugin_id = 3;
+  string name = 4;
+  string address = 5;
+  string value_type = 6;
+  bool enabled = 7;
+  map<string, string> tags = 8;
+  map<string, string> metadata = 9;
+}
+
+message CollectionRecord {
+  string record_id = 1;
+  string source_plugin_id = 2;
+  string device_id = 3;
+  string task_id = 4;
+  string point_id = 5;
+  int64 source_time_unix_ms = 6;
+  int64 receive_time_unix_ms = 7;
+  string quality = 8;
+  bytes raw_payload = 9;
+  bytes normalized_payload = 10;
+  string trace_id = 11;
+  map<string, string> tags = 12;
+  bool changed = 13;
+}
+
+message DebugLog {
+  int64 time_unix_ms = 1;
+  string level = 2;
+  string device_id = 3;
+  string task_id = 4;
+  string point_id = 5;
+  string message = 6;
+  string trace_id = 7;
+  map<string, string> fields = 8;
+}

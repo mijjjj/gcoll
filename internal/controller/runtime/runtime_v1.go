@@ -41,6 +41,11 @@ func (c *ControllerV1) Plugins(ctx context.Context, req *runtimev1.PluginsReq) (
 	return c.runtimeSvc.GetPlugins(ctx), nil
 }
 
+// ModbusTcpDeviceConfigPage 返回当前设备的 Modbus TCP 协议配置页数据。
+func (c *ControllerV1) ModbusTcpDeviceConfigPage(ctx context.Context, req *runtimev1.ModbusTcpDeviceConfigPageReq) (res *runtimev1.ModbusTcpDeviceConfigPageRes, err error) {
+	return c.runtimeSvc.GetModbusTcpDeviceConfigPage(ctx, req.DeviceId)
+}
+
 // Devices 返回设备列表。
 func (c *ControllerV1) Devices(ctx context.Context, req *runtimev1.DevicesReq) (res *runtimev1.DevicesRes, err error) {
 	_ = req

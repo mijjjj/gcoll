@@ -1,0 +1,88 @@
+schemaVersion: 1
+id: com.gcoll.modbus-tcp
+name: Modbus TCP 采集
+type: southbound
+version: 0.1.0
+runtime: process
+protocol: grpc
+entry:
+  windows-amd64: bin/modbus-tcp-plugin.exe
+capabilities:
+  - southbound.collector.modbus_tcp
+  - southbound.writer.modbus_tcp
+  - runtime.debug_logs
+permissions:
+  - network.outbound
+  - config.read
+  - runtime.events
+compatibility:
+  core: ">=0.1.0 <0.2.0"
+  pluginProtocol: "1.x"
+configSchema:
+  type: object
+  required:
+    - host
+  properties:
+    host:
+      type: string
+      title: 主机地址
+      ui:
+        component: text
+      rules:
+        maxLength: 255
+    port:
+      type: number
+      title: 端口
+      default: 502
+      rules:
+        minimum: 1
+        maximum: 65535
+    unitId:
+      type: number
+      title: Unit ID
+      default: 1
+      rules:
+        minimum: 0
+        maximum: 247
+    timeoutMs:
+      type: number
+      title: 超时时间
+      default: 2000
+      rules:
+        minimum: 100
+        maximum: 60000
+    pollIntervalMs:
+      type: number
+      title: 轮询间隔
+      default: 1000
+      rules:
+        minimum: 100
+        maximum: 86400000
+    reportMode:
+      type: string
+      title: 上报模式
+      default: change
+      enum:
+        - change
+        - all
+      ui:
+        component: select
+    maxCoilBatch:
+      type: number
+      title: 线圈批量读取长度
+      default: 512
+      rules:
+        minimum: 1
+        maximum: 2000
+    maxRegisterBatch:
+      type: number
+      title: 寄存器批量读取长度
+      default: 64
+      rules:
+        minimum: 1
+        maximum: 125
+customConfigPage:
+  enabled: true
+  entry: assets/config.html
+signature:
+  algorithm: ed25519

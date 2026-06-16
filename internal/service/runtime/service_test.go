@@ -47,12 +47,38 @@ func TestServiceGetDevicePoints(t *testing.T) {
 	service := New()
 
 	resp := service.GetDevicePoints(context.Background(), "dev-edge-gw-a01")
-	if len(resp.Items) != 4 {
+	if len(resp.Items) != 6 {
 		t.Fatalf("设备点位数量不符合预期: %d", len(resp.Items))
 	}
 
 	emptyResp := service.GetDevicePoints(context.Background(), "unknown")
 	if len(emptyResp.Items) != 0 {
 		t.Fatalf("未知设备不应返回点位: %d", len(emptyResp.Items))
+	}
+}
+
+func TestServiceGetModbusTcpDeviceConfigPage(t *testing.T) {
+	service := New()
+
+	resp, err := service.GetModbusTcpDeviceConfigPage(context.Background(), "dev-edge-gw-a01")
+	if err != nil {
+		t.Fatalf("获取设备协议配置失败: %v", err)
+	}
+	if resp.Plugin.Id != "com.gcoll.modbus-tcp" {
+		t.Fatalf("插件 ID 不符合预期: %s", resp.Plugin.Id)
+	}
+	if resp.Device.Id != "dev-edge-gw-a01" {
+		t.Fatalf("设备 ID 不符合预期: %s", resp.Device.Id)
+	}
+	if len(resp.ReadPlan) == 0 {
+		t.Fatal("读取计划不能为空")
+	}
+	if len(resp.DebugLogs) == 0 {
+		t.Fatal("调试日志不能为空")
+	}
+
+	_, err = service.GetModbusTcpDeviceConfigPage(context.Background(), "unknown")
+	if err == nil {
+		t.Fatal("未知设备不应返回协议配置")
 	}
 }

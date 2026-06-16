@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 
+	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/os/gtime"
 	"github.com/gogf/gf/v2/util/gconv"
 
@@ -99,15 +100,15 @@ func (s *Service) GetPlugins(ctx context.Context) *runtimev1.PluginsRes {
 	return &runtimev1.PluginsRes{
 		Items: []runtimev1.PluginItem{
 			{
-				Id:          "com.gcoll.http-collector",
-				Name:        "HTTP 轮询采集",
+				Id:          "com.gcoll.modbus-tcp",
+				Name:        "Modbus TCP 采集",
 				Type:        "southbound",
 				Version:     "0.1.0",
 				Runtime:     "process",
 				Protocol:    "grpc",
 				Status:      "running",
-				Permissions: []string{"network.outbound", "config.read"},
-				UpdatedAt:   "2026-06-15 09:10:00",
+				Permissions: []string{"network.outbound", "config.read", "runtime.events"},
+				UpdatedAt:   "2026-06-16 10:15:00",
 			},
 			{
 				Id:          "com.gcoll.http-forwarder",
@@ -139,22 +140,22 @@ func (s *Service) GetDevices(ctx context.Context) *runtimev1.DevicesRes {
 				Name:        "边缘网关 A01",
 				Code:        "DEV-EDGE-A01",
 				GroupId:     "edge",
-				PluginId:    "com.gcoll.http-collector",
-				PluginName:  "HTTP 轮询采集",
+				PluginId:    "com.gcoll.modbus-tcp",
+				PluginName:  "Modbus TCP 采集",
 				Status:      "online",
 				Enabled:     true,
-				PointCount:  4,
+				PointCount:  6,
 				ReportMode:  "change",
-				LastSeenAt:  "2026-06-15 09:30:18",
-				Description: "用于验证 MVP 采集、过滤、转发闭环的本地网关。",
+				LastSeenAt:  "2026-06-16 10:30:18",
+				Description: "用于验证 Modbus TCP 采集、过滤、转发闭环的本地网关。",
 			},
 			{
 				Id:          "dev-sim-line-b02",
 				Name:        "模拟产线 B02",
 				Code:        "DEV-SIM-B02",
 				GroupId:     "edge",
-				PluginId:    "com.gcoll.http-collector",
-				PluginName:  "HTTP 轮询采集",
+				PluginId:    "com.gcoll.modbus-tcp",
+				PluginName:  "Modbus TCP 采集",
 				Status:      "offline",
 				Enabled:     false,
 				PointCount:  0,
@@ -174,10 +175,10 @@ func (s *Service) GetDevicePoints(ctx context.Context, deviceId string) *runtime
 		{
 			Id:          "pt-temperature",
 			DeviceId:    "dev-edge-gw-a01",
-			PluginId:    "com.gcoll.http-collector",
+			PluginId:    "com.gcoll.modbus-tcp",
 			Name:        "TEMP_01",
 			Description: "环境温度",
-			Address:     "$.temperature",
+			Address:     "holding_register:40001",
 			ValueType:   "float",
 			Unit:        "℃",
 			Enabled:     true,
@@ -186,10 +187,10 @@ func (s *Service) GetDevicePoints(ctx context.Context, deviceId string) *runtime
 		{
 			Id:          "pt-pressure",
 			DeviceId:    "dev-edge-gw-a01",
-			PluginId:    "com.gcoll.http-collector",
+			PluginId:    "com.gcoll.modbus-tcp",
 			Name:        "PRESS_01",
 			Description: "管线压力",
-			Address:     "$.pressure",
+			Address:     "holding_register:40003",
 			ValueType:   "float",
 			Unit:        "kPa",
 			Enabled:     true,
@@ -198,10 +199,10 @@ func (s *Service) GetDevicePoints(ctx context.Context, deviceId string) *runtime
 		{
 			Id:          "pt-motor-state",
 			DeviceId:    "dev-edge-gw-a01",
-			PluginId:    "com.gcoll.http-collector",
+			PluginId:    "com.gcoll.modbus-tcp",
 			Name:        "MOTOR_RUN",
 			Description: "电机运行状态",
-			Address:     "$.motor.running",
+			Address:     "coil:00001",
 			ValueType:   "bool",
 			Enabled:     true,
 			Tags:        map[string]string{"area": "A", "kind": "status"},
@@ -209,14 +210,37 @@ func (s *Service) GetDevicePoints(ctx context.Context, deviceId string) *runtime
 		{
 			Id:          "pt-energy",
 			DeviceId:    "dev-edge-gw-a01",
-			PluginId:    "com.gcoll.http-collector",
+			PluginId:    "com.gcoll.modbus-tcp",
 			Name:        "ENERGY_TOTAL",
 			Description: "累计能耗",
-			Address:     "$.energy.total",
+			Address:     "input_register:30001",
 			ValueType:   "float",
 			Unit:        "kWh",
 			Enabled:     true,
 			Tags:        map[string]string{"area": "A", "kind": "meter"},
+		},
+		{
+			Id:          "pt-speed-set",
+			DeviceId:    "dev-edge-gw-a01",
+			PluginId:    "com.gcoll.modbus-tcp",
+			Name:        "SPEED_SET",
+			Description: "速度设定值",
+			Address:     "holding_register:40110",
+			ValueType:   "int",
+			Unit:        "rpm",
+			Enabled:     true,
+			Tags:        map[string]string{"area": "A", "kind": "write"},
+		},
+		{
+			Id:          "pt-emergency",
+			DeviceId:    "dev-edge-gw-a01",
+			PluginId:    "com.gcoll.modbus-tcp",
+			Name:        "EMERGENCY_STOP",
+			Description: "急停输入状态",
+			Address:     "discrete_input:10001",
+			ValueType:   "bool",
+			Enabled:     true,
+			Tags:        map[string]string{"area": "A", "kind": "safety"},
 		},
 	}
 
@@ -238,16 +262,16 @@ func (s *Service) GetTasks(ctx context.Context) *runtimev1.TasksRes {
 		Items: []runtimev1.TaskSummary{
 			{
 				Id:              "task-http-a01",
-				Name:            "样例 HTTP 采集链路",
+				Name:            "样例 Modbus TCP 采集链路",
 				DeviceId:        "dev-edge-gw-a01",
 				DeviceName:      "边缘网关 A01",
-				SouthPluginName: "HTTP 轮询采集",
-				PointCount:      4,
+				SouthPluginName: "Modbus TCP 采集",
+				PointCount:      6,
 				ReportMode:      "change",
 				Status:          "running",
 				Rate:            "128 条/秒",
 				RuleHitRate:     "72%",
-				LastCollectedAt: "2026-06-15 09:30:18",
+				LastCollectedAt: "2026-06-16 10:30:18",
 			},
 		},
 	}
@@ -259,10 +283,10 @@ func (s *Service) GetPointCache(ctx context.Context) *runtimev1.PointCacheRes {
 
 	return &runtimev1.PointCacheRes{
 		Items: []runtimev1.PointCacheItem{
-			{PointId: "pt-temperature", DeviceId: "dev-edge-gw-a01", PointName: "TEMP_01", Value: "25.6 ℃", Quality: "good", Changed: true, UpdatedAt: "2026-06-15 09:30:18.123"},
-			{PointId: "pt-pressure", DeviceId: "dev-edge-gw-a01", PointName: "PRESS_01", Value: "101.3 kPa", Quality: "good", Changed: false, UpdatedAt: "2026-06-15 09:30:18.120"},
-			{PointId: "pt-motor-state", DeviceId: "dev-edge-gw-a01", PointName: "MOTOR_RUN", Value: "ON", Quality: "good", Changed: true, UpdatedAt: "2026-06-15 09:30:18.118"},
-			{PointId: "pt-energy", DeviceId: "dev-edge-gw-a01", PointName: "ENERGY_TOTAL", Value: "1288.4 kWh", Quality: "uncertain", Changed: false, UpdatedAt: "2026-06-15 09:30:18.110"},
+			{PointId: "pt-temperature", DeviceId: "dev-edge-gw-a01", PointName: "TEMP_01", Value: "25.6 ℃", Quality: "good", Changed: true, UpdatedAt: "2026-06-16 10:30:18.123"},
+			{PointId: "pt-pressure", DeviceId: "dev-edge-gw-a01", PointName: "PRESS_01", Value: "101.3 kPa", Quality: "good", Changed: false, UpdatedAt: "2026-06-16 10:30:18.120"},
+			{PointId: "pt-motor-state", DeviceId: "dev-edge-gw-a01", PointName: "MOTOR_RUN", Value: "ON", Quality: "good", Changed: true, UpdatedAt: "2026-06-16 10:30:18.118"},
+			{PointId: "pt-energy", DeviceId: "dev-edge-gw-a01", PointName: "ENERGY_TOTAL", Value: "1288.4 kWh", Quality: "uncertain", Changed: false, UpdatedAt: "2026-06-16 10:30:18.110"},
 		},
 	}
 }
@@ -297,9 +321,117 @@ func (s *Service) GetLogs(ctx context.Context) *runtimev1.LogsRes {
 
 	return &runtimev1.LogsRes{
 		Items: []runtimev1.RuntimeEvent{
-			{Id: "evt-001", Time: "2026-06-15 09:30:18", Level: "INFO", Source: "collector", PluginId: "com.gcoll.http-collector", DeviceId: "dev-edge-gw-a01", TaskId: "task-http-a01", Message: "已接收 128 条采集记录并写入内存缓冲。", TraceId: "trace-demo-001"},
-			{Id: "evt-002", Time: "2026-06-15 09:30:18", Level: "INFO", Source: "pipeline", DeviceId: "dev-edge-gw-a01", TaskId: "task-http-a01", Message: "规则过滤命中 92 条记录，准备交给北向转发。", TraceId: "trace-demo-001"},
-			{Id: "evt-003", Time: "2026-06-15 09:30:19", Level: "WARN", Source: "delivery", PluginId: "com.gcoll.http-forwarder", TaskId: "task-http-a01", Message: "备用转发目标未启用，已跳过。", TraceId: "trace-demo-002"},
+			{Id: "evt-001", Time: "2026-06-16 10:30:18", Level: "INFO", Source: "collector", PluginId: "com.gcoll.modbus-tcp", DeviceId: "dev-edge-gw-a01", TaskId: "task-modbus-a01", Message: "已接收 128 条采集记录并写入内存缓冲。", TraceId: "trace-demo-001"},
+			{Id: "evt-002", Time: "2026-06-16 10:30:18", Level: "INFO", Source: "pipeline", DeviceId: "dev-edge-gw-a01", TaskId: "task-modbus-a01", Message: "规则过滤命中 92 条记录，准备交给北向转发。", TraceId: "trace-demo-001"},
+			{Id: "evt-003", Time: "2026-06-16 10:30:19", Level: "WARN", Source: "delivery", PluginId: "com.gcoll.http-forwarder", TaskId: "task-modbus-a01", Message: "备用转发目标未启用，已跳过。", TraceId: "trace-demo-002"},
 		},
 	}
+}
+
+// GetModbusTcpDeviceConfigPage 返回指定设备的 Modbus TCP 协议配置页示例数据。
+func (s *Service) GetModbusTcpDeviceConfigPage(ctx context.Context, deviceId string) (*runtimev1.ModbusTcpDeviceConfigPageRes, error) {
+	devices := s.GetDevices(ctx)
+	var device *runtimev1.DeviceItem
+	for index := range devices.Items {
+		if devices.Items[index].Id == deviceId {
+			device = &devices.Items[index]
+			break
+		}
+	}
+	if device == nil {
+		return nil, gerror.Newf("设备不存在: %s", deviceId)
+	}
+	if device.PluginId != "com.gcoll.modbus-tcp" {
+		return nil, gerror.Newf("设备未使用 Modbus TCP 插件: %s", deviceId)
+	}
+
+	configs := map[string]runtimev1.ModbusTcpDeviceConfig{
+		"dev-edge-gw-a01": {
+			Host:             "192.168.10.25",
+			Port:             502,
+			UnitId:           1,
+			TimeoutMs:        2000,
+			PollIntervalMs:   1000,
+			ReportMode:       "change",
+			DebugEnabled:     true,
+			MaxCoilBatch:     512,
+			MaxRegisterBatch: 64,
+			LowLatencyMs:     80,
+			HighLatencyMs:    1000,
+		},
+		"dev-sim-line-b02": {
+			Host:             "192.168.10.88",
+			Port:             502,
+			UnitId:           2,
+			TimeoutMs:        3000,
+			PollIntervalMs:   1500,
+			ReportMode:       "change",
+			DebugEnabled:     false,
+			MaxCoilBatch:     256,
+			MaxRegisterBatch: 32,
+			LowLatencyMs:     100,
+			HighLatencyMs:    1200,
+		},
+	}
+	config, ok := configs[deviceId]
+	if !ok {
+		return nil, gerror.Newf("设备缺少 Modbus TCP 配置: %s", deviceId)
+	}
+
+	var (
+		readPlan  []runtimev1.ModbusTcpReadBlock
+		points    []runtimev1.ModbusTcpPoint
+		debugLogs []runtimev1.ModbusTcpDebugLog
+	)
+	if deviceId == "dev-edge-gw-a01" {
+		readPlan = []runtimev1.ModbusTcpReadBlock{
+			{Area: "coil", Start: 0, Quantity: 1, PointIds: []string{"pt-motor-state"}, LatencyMs: 16},
+			{Area: "discrete_input", Start: 0, Quantity: 1, PointIds: []string{"pt-emergency"}, LatencyMs: 14},
+			{Area: "holding_register", Start: 0, Quantity: 4, PointIds: []string{"pt-temperature", "pt-pressure"}, LatencyMs: 22},
+			{Area: "holding_register", Start: 109, Quantity: 1, PointIds: []string{"pt-speed-set"}, LatencyMs: 18},
+			{Area: "input_register", Start: 0, Quantity: 2, PointIds: []string{"pt-energy"}, LatencyMs: 20},
+		}
+		points = []runtimev1.ModbusTcpPoint{
+			{Id: "pt-temperature", Name: "TEMP_01", Area: "holding_register", Address: 0, Quantity: 2, ValueType: "float32", Mode: "read", ReportMode: "change", Enabled: true, ByteOrder: "big", WordOrder: "big", Scale: "1", Current: "25.6 ℃", Quality: "good", LastReadAt: "2026-06-16 10:30:18.123", Description: "环境温度"},
+			{Id: "pt-pressure", Name: "PRESS_01", Area: "holding_register", Address: 2, Quantity: 2, ValueType: "float32", Mode: "read", ReportMode: "change", Enabled: true, ByteOrder: "big", WordOrder: "big", Scale: "1", Current: "101.3 kPa", Quality: "good", LastReadAt: "2026-06-16 10:30:18.120", Description: "管线压力"},
+			{Id: "pt-motor-state", Name: "MOTOR_RUN", Area: "coil", Address: 0, Quantity: 1, ValueType: "bool", Mode: "read", ReportMode: "change", Enabled: true, ByteOrder: "big", WordOrder: "big", Scale: "1", Current: "ON", Quality: "good", LastReadAt: "2026-06-16 10:30:18.118", Description: "电机运行状态"},
+			{Id: "pt-energy", Name: "ENERGY_TOTAL", Area: "input_register", Address: 0, Quantity: 2, ValueType: "float32", Mode: "read", ReportMode: "change", Enabled: true, ByteOrder: "big", WordOrder: "little", Scale: "1", Current: "1288.4 kWh", Quality: "uncertain", LastReadAt: "2026-06-16 10:30:18.110", Description: "累计能耗"},
+			{Id: "pt-speed-set", Name: "SPEED_SET", Area: "holding_register", Address: 109, Quantity: 1, ValueType: "uint16", Mode: "write", ReportMode: "change", Enabled: true, ByteOrder: "big", WordOrder: "big", Scale: "1", Current: "960 rpm", Quality: "good", LastReadAt: "2026-06-16 10:29:55.010", Description: "速度设定值"},
+			{Id: "pt-emergency", Name: "EMERGENCY_STOP", Area: "discrete_input", Address: 0, Quantity: 1, ValueType: "bool", Mode: "read", ReportMode: "change", Enabled: true, ByteOrder: "big", WordOrder: "big", Scale: "1", Current: "OFF", Quality: "good", LastReadAt: "2026-06-16 10:30:18.106", Description: "急停输入状态"},
+		}
+		debugLogs = []runtimev1.ModbusTcpDebugLog{
+			{Time: "2026-06-16 10:30:18.101", Level: "DEBUG", Message: "批量读取成功", TraceId: "trace-demo-001", Area: "holding_register", Address: "0", CostMs: 22, RawHex: "41CC000042CA999A"},
+			{Time: "2026-06-16 10:30:18.118", Level: "DEBUG", Message: "线圈读取成功", TraceId: "trace-demo-001", Area: "coil", Address: "0", CostMs: 16, RawHex: "01"},
+			{Time: "2026-06-16 10:30:19.002", Level: "INFO", Message: "自适应读取上限保持稳定", TraceId: "trace-demo-001", Area: "holding_register", Address: "0", CostMs: 0, RawHex: ""},
+		}
+	}
+
+	return &runtimev1.ModbusTcpDeviceConfigPageRes{
+		Plugin: runtimev1.PluginItem{
+			Id:          "com.gcoll.modbus-tcp",
+			Name:        "Modbus TCP 采集",
+			Type:        "southbound",
+			Version:     "0.1.0",
+			Runtime:     "process",
+			Protocol:    "grpc",
+			Status:      "running",
+			Permissions: []string{"network.outbound", "config.read", "runtime.events"},
+			UpdatedAt:   "2026-06-16 10:15:00",
+		},
+		Device:    *device,
+		Config:    config,
+		ReadPlan:  readPlan,
+		Points:    points,
+		DebugLogs: debugLogs,
+		Operations: []runtimev1.ModbusTcpOperation{
+			{Key: "test", Label: "测试连接", Description: "建立 TCP 连接并执行一次轻量读取。", Enabled: true},
+			{Key: "readOnce", Label: "读取一次", Description: "按当前点位表执行一次读取并输出调试日志。", Enabled: true},
+			{Key: "toggleDebug", Label: "调试模式", Description: "采集请求、响应耗时和原始报文摘要。", Enabled: true},
+			{Key: "writePoint", Label: "写入点位", Description: "仅允许写入线圈和保持寄存器点位。", Enabled: true},
+		},
+		Warnings: []string{
+			"采集明细不落库，调试日志只保存最近窗口并由宿主统一收集。",
+			"离散输入和输入寄存器为只读区域，不能配置写入模式。",
+		},
+	}, nil
 }

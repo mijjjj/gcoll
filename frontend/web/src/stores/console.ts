@@ -4,6 +4,7 @@ import {
   type DeviceGroup,
   type DeviceItem,
   type ForwardTargetItem,
+  type ModbusTcpDeviceConfigPage,
   type OverviewData,
   type PipelineRuleItem,
   type PluginItem,
@@ -25,6 +26,7 @@ interface ConsoleState {
   pipelineRules: PipelineRuleItem[]
   targets: ForwardTargetItem[]
   logs: RuntimeEvent[]
+  modbusTcpDeviceConfigPage: ModbusTcpDeviceConfigPage | null
   loading: boolean
   error: string
 }
@@ -42,11 +44,12 @@ export const useConsoleStore = defineStore('console', {
     pipelineRules: [],
     targets: [],
     logs: [],
+    modbusTcpDeviceConfigPage: null,
     loading: false,
     error: '',
   }),
   getters: {
-    selectedDevice: (state) => state.devices.find((device) => device.id === state.selectedDeviceId) ?? state.devices[0],
+    selectedDevice: (state) => state.devices.find((device) => device.id === state.selectedDeviceId),
   },
   actions: {
     async loadOverview() {
@@ -64,7 +67,7 @@ export const useConsoleStore = defineStore('console', {
         if (!this.selectedDeviceId && result.items.length > 0) {
           this.selectedDeviceId = result.items[0].id
         }
-        await this.loadPointsForSelectedDevice()
+        await this.fetchSelectedDeviceDetails()
       })
     },
     async loadPointsForSelectedDevice() {
@@ -78,13 +81,35 @@ export const useConsoleStore = defineStore('console', {
     async selectDevice(deviceId: string) {
       this.selectedDeviceId = deviceId
       await this.run(async () => {
-        await this.loadPointsForSelectedDevice()
+        await this.fetchSelectedDeviceDetails()
+      })
+    },
+    async loadSelectedDeviceDetails() {
+      await this.run(async () => {
+        await this.fetchSelectedDeviceDetails()
       })
     },
     async loadPlugins() {
       await this.run(async () => {
         this.plugins = (await consoleApi.getPlugins()).items
       })
+    },
+    async loadModbusTcpDeviceConfigPage() {
+      await this.run(async () => {
+        await this.fetchModbusTcpDeviceConfigPage()
+      })
+    },
+    async fetchSelectedDeviceDetails() {
+      await this.loadPointsForSelectedDevice()
+      await this.fetchModbusTcpDeviceConfigPage()
+    },
+    async fetchModbusTcpDeviceConfigPage() {
+      const device = this.devices.find((item) => item.id === this.selectedDeviceId)
+      if (!device || device.pluginId !== 'com.gcoll.modbus-tcp') {
+        this.modbusTcpDeviceConfigPage = null
+        return
+      }
+      this.modbusTcpDeviceConfigPage = await consoleApi.getModbusTcpDeviceConfigPage(device.id)
     },
     async loadTasks() {
       await this.run(async () => {

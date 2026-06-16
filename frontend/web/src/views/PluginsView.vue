@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { h, onMounted } from 'vue'
 import { NButton, NDataTable, NTag, type DataTableColumns } from 'naive-ui'
+import { useRouter } from 'vue-router'
 import { PackagePlus, RefreshCw, RotateCcw, Upload } from '@lucide/vue'
 import DataToolbar from '../components/common/DataToolbar.vue'
 import PageHeader from '../components/common/PageHeader.vue'
@@ -10,6 +11,7 @@ import { useConsoleStore } from '../stores/console'
 import type { PluginItem } from '../api/console'
 
 const consoleStore = useConsoleStore()
+const router = useRouter()
 
 const columns: DataTableColumns<PluginItem> = [
   { title: '插件名称', key: 'name', minWidth: 170, sorter: 'default' },
@@ -40,6 +42,23 @@ const columns: DataTableColumns<PluginItem> = [
       ),
   },
   { title: '更新时间', key: 'updatedAt', width: 168 },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 112,
+    render: (row) =>
+      h(
+        NButton,
+        {
+          size: 'small',
+          text: true,
+          type: 'primary',
+          disabled: row.id !== 'com.gcoll.modbus-tcp',
+          onClick: () => router.push('/plugins/modbus-tcp'),
+        },
+        { default: () => '详情' },
+      ),
+  },
 ]
 
 onMounted(() => {

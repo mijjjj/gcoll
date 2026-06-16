@@ -23,6 +23,24 @@ type PluginsReq struct {
 	g.Meta `path:"/plugins" method:"get" tags:"Plugins" summary:"获取插件列表"`
 }
 
+// ModbusTcpDeviceConfigPageReq 描述 Modbus TCP 设备协议配置页请求。
+type ModbusTcpDeviceConfigPageReq struct {
+	g.Meta   `path:"/devices/{deviceId}/protocol-config" method:"get" tags:"Devices" summary:"获取设备协议配置页数据"`
+	DeviceId string `json:"deviceId" in:"path"`
+}
+
+// ModbusTcpDeviceConfigPageRes 描述 Modbus TCP 设备协议配置页响应。
+type ModbusTcpDeviceConfigPageRes struct {
+	Plugin     PluginItem            `json:"plugin"`
+	Device     DeviceItem            `json:"device"`
+	Config     ModbusTcpDeviceConfig `json:"config"`
+	ReadPlan   []ModbusTcpReadBlock  `json:"readPlan"`
+	Points     []ModbusTcpPoint      `json:"points"`
+	DebugLogs  []ModbusTcpDebugLog   `json:"debugLogs"`
+	Operations []ModbusTcpOperation  `json:"operations"`
+	Warnings   []string              `json:"warnings"`
+}
+
 // PluginsRes 描述插件列表响应。
 type PluginsRes struct {
 	Items []PluginItem `json:"items"`
@@ -252,4 +270,68 @@ type RuntimeEvent struct {
 	TaskId   string `json:"taskId"`
 	Message  string `json:"message"`
 	TraceId  string `json:"traceId"`
+}
+
+// ModbusTcpDeviceConfig 描述 Modbus TCP 设备配置。
+type ModbusTcpDeviceConfig struct {
+	Host             string `json:"host"`
+	Port             int    `json:"port"`
+	UnitId           int    `json:"unitId"`
+	TimeoutMs        int    `json:"timeoutMs"`
+	PollIntervalMs   int    `json:"pollIntervalMs"`
+	ReportMode       string `json:"reportMode"`
+	DebugEnabled     bool   `json:"debugEnabled"`
+	MaxCoilBatch     int    `json:"maxCoilBatch"`
+	MaxRegisterBatch int    `json:"maxRegisterBatch"`
+	LowLatencyMs     int    `json:"lowLatencyMs"`
+	HighLatencyMs    int    `json:"highLatencyMs"`
+}
+
+// ModbusTcpReadBlock 描述读取计划中的批量请求。
+type ModbusTcpReadBlock struct {
+	Area      string   `json:"area"`
+	Start     int      `json:"start"`
+	Quantity  int      `json:"quantity"`
+	PointIds  []string `json:"pointIds"`
+	LatencyMs int      `json:"latencyMs"`
+}
+
+// ModbusTcpPoint 描述 Modbus TCP 点位配置。
+type ModbusTcpPoint struct {
+	Id          string `json:"id"`
+	Name        string `json:"name"`
+	Area        string `json:"area"`
+	Address     int    `json:"address"`
+	Quantity    int    `json:"quantity"`
+	ValueType   string `json:"valueType"`
+	Mode        string `json:"mode"`
+	ReportMode  string `json:"reportMode"`
+	Enabled     bool   `json:"enabled"`
+	ByteOrder   string `json:"byteOrder"`
+	WordOrder   string `json:"wordOrder"`
+	Scale       string `json:"scale"`
+	Current     string `json:"current"`
+	Quality     string `json:"quality"`
+	LastReadAt  string `json:"lastReadAt"`
+	Description string `json:"description"`
+}
+
+// ModbusTcpDebugLog 描述 Modbus TCP 调试日志。
+type ModbusTcpDebugLog struct {
+	Time    string `json:"time"`
+	Level   string `json:"level"`
+	Message string `json:"message"`
+	TraceId string `json:"traceId"`
+	Area    string `json:"area"`
+	Address string `json:"address"`
+	CostMs  int    `json:"costMs"`
+	RawHex  string `json:"rawHex"`
+}
+
+// ModbusTcpOperation 描述设备协议配置页可执行动作。
+type ModbusTcpOperation struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	Enabled     bool   `json:"enabled"`
 }
