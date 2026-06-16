@@ -1,5 +1,4 @@
 DELETE FROM modbus_tcp_debug_logs WHERE id IN ('modbus-log-001', 'modbus-log-002', 'modbus-log-003');
-DELETE FROM modbus_tcp_point_profiles WHERE id LIKE 'mpp-%';
 DELETE FROM modbus_tcp_device_profiles WHERE id LIKE 'mdp-%';
 
 DROP INDEX IF EXISTS idx_runtime_events_time;

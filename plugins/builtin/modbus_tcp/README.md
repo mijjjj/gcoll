@@ -21,6 +21,7 @@
 | `area` | `coil`、`discrete_input`、`holding_register`、`input_register` |
 | `mode` | `read` 或 `write` |
 | `quantity` | 点位占用线圈或寄存器数量 |
+| `valueType` | 插件侧解码使用的值类型，例如 `bool`、`uint16`、`float32` |
 | `byteOrder` | `big` 或 `little` |
 | `wordOrder` | `big` 或 `little` |
 | `scale` | 数值缩放系数 |

@@ -2,7 +2,10 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/os/gtime"
@@ -300,7 +303,7 @@ func (s *Service) GetModbusTcpDeviceConfigPage(ctx context.Context, deviceId str
 	if err != nil {
 		return nil, err
 	}
-	points, err := s.modbusPoints(ctx, deviceId)
+	points, err := s.modbusPoints(ctx, deviceId, device.ReportMode)
 	if err != nil {
 		return nil, err
 	}
@@ -390,45 +393,18 @@ func (s *Service) modbusConfig(ctx context.Context, deviceId string) (*runtimev1
 	}, nil
 }
 
-func (s *Service) modbusPoints(ctx context.Context, deviceId string) ([]runtimev1.ModbusTcpPoint, error) {
-	var (
-		points   []entity.DevicePoints
-		profiles []entity.ModbusTcpPointProfiles
-	)
+func (s *Service) modbusPoints(ctx context.Context, deviceId string, reportMode string) ([]runtimev1.ModbusTcpPoint, error) {
+	var points []entity.DevicePoints
 	if err := dao.DevicePoints.Ctx(ctx).Where(do.DevicePoints{DeviceId: deviceId, PluginId: modbusPluginId}).Scan(&points); err != nil {
 		return nil, gerror.Wrapf(err, "读取设备点位失败: %s", deviceId)
 	}
-	if err := dao.ModbusTcpPointProfiles.Ctx(ctx).Where(do.ModbusTcpPointProfiles{DeviceId: deviceId, PluginId: modbusPluginId}).Scan(&profiles); err != nil {
-		return nil, gerror.Wrapf(err, "读取 Modbus TCP 点位配置失败: %s", deviceId)
-	}
-	pointMap := make(map[string]entity.DevicePoints, len(points))
+	items := make([]runtimev1.ModbusTcpPoint, 0, len(points))
 	for _, point := range points {
-		pointMap[point.Id] = point
-	}
-	items := make([]runtimev1.ModbusTcpPoint, 0, len(profiles))
-	for _, profile := range profiles {
-		point, ok := pointMap[profile.PointId]
-		if !ok {
-			return nil, gerror.Newf("Modbus TCP 点位缺少通用点位记录: %s", profile.PointId)
+		item, err := toModbusPoint(point, reportMode)
+		if err != nil {
+			return nil, err
 		}
-		items = append(items, runtimev1.ModbusTcpPoint{
-			Id:          point.Id,
-			Name:        point.Name,
-			Area:        profile.Area,
-			Address:     profile.Address,
-			Quantity:    profile.Quantity,
-			ValueType:   profile.ValueType,
-			Mode:        profile.Mode,
-			ReportMode:  profile.ReportMode,
-			Enabled:     point.Enabled == 1 && profile.Enabled == 1,
-			ByteOrder:   profile.ByteOrder,
-			WordOrder:   profile.WordOrder,
-			Scale:       gconv.String(profile.Scale),
-			Current:     currentValue(point.Id),
-			Quality:     currentQuality(point.Id),
-			LastReadAt:  currentTime(point.Id),
-			Description: point.Description,
-		})
+		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if areaOrder(items[i].Area) != areaOrder(items[j].Area) {
@@ -440,6 +416,121 @@ func (s *Service) modbusPoints(ctx context.Context, deviceId string) ([]runtimev
 		return items[i].Id < items[j].Id
 	})
 	return items, nil
+}
+
+func toModbusPoint(point entity.DevicePoints, reportMode string) (runtimev1.ModbusTcpPoint, error) {
+	metadata, err := modbusMetadata(point)
+	if err != nil {
+		return runtimev1.ModbusTcpPoint{}, err
+	}
+	area := gconv.String(metadata["area"])
+	address, err := modbusAddress(point.Address, area, metadata)
+	if err != nil {
+		return runtimev1.ModbusTcpPoint{}, err
+	}
+	pointReportMode := gconv.String(metadata["reportMode"])
+	if pointReportMode == "" {
+		pointReportMode = reportMode
+	}
+	return runtimev1.ModbusTcpPoint{
+		Id:          point.Id,
+		Name:        point.Name,
+		Area:        area,
+		Address:     address,
+		Quantity:    gconv.Int(metadata["quantity"]),
+		ValueType:   modbusValueType(point, metadata),
+		Mode:        gconv.String(metadata["mode"]),
+		ReportMode:  pointReportMode,
+		Enabled:     point.Enabled == 1,
+		ByteOrder:   gconv.String(metadata["byteOrder"]),
+		WordOrder:   gconv.String(metadata["wordOrder"]),
+		Scale:       modbusMetadataString(metadata, "scale", "1"),
+		Current:     currentValue(point.Id),
+		Quality:     currentQuality(point.Id),
+		LastReadAt:  currentTime(point.Id),
+		Description: point.Description,
+	}, nil
+}
+
+func modbusMetadata(point entity.DevicePoints) (map[string]any, error) {
+	metadata := map[string]any{}
+	if strings.TrimSpace(point.MetadataJson) == "" {
+		return nil, gerror.Newf("Modbus TCP 点位缺少 metadata: %s", point.Id)
+	}
+	if err := json.Unmarshal([]byte(point.MetadataJson), &metadata); err != nil {
+		return nil, gerror.Wrapf(err, "解析 Modbus TCP 点位 metadata 失败: %s", point.Id)
+	}
+	if gconv.String(metadata["area"]) == "" {
+		return nil, gerror.Newf("Modbus TCP 点位 metadata 缺少 area: %s", point.Id)
+	}
+	if gconv.String(metadata["mode"]) == "" {
+		return nil, gerror.Newf("Modbus TCP 点位 metadata 缺少 mode: %s", point.Id)
+	}
+	if gconv.Int(metadata["quantity"]) < 1 {
+		return nil, gerror.Newf("Modbus TCP 点位 metadata 的 quantity 无效: %s", point.Id)
+	}
+	return metadata, nil
+}
+
+func modbusAddress(raw string, area string, metadata map[string]any) (int, error) {
+	if value := strings.TrimSpace(gconv.String(metadata["address"])); value != "" {
+		address := gconv.Int(value)
+		if address < 0 {
+			return 0, gerror.New("Modbus TCP 点位地址不能小于 0")
+		}
+		return address, nil
+	}
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return 0, gerror.New("Modbus TCP 点位地址不能为空")
+	}
+	hasPrefix := strings.Contains(value, ":")
+	if hasPrefix {
+		parts := strings.SplitN(value, ":", 2)
+		value = strings.TrimSpace(parts[1])
+	}
+	address, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, gerror.Wrapf(err, "解析 Modbus TCP 点位地址失败: %s", raw)
+	}
+	if hasPrefix {
+		if base := modbusDisplayAddressBase(area); base > 0 && address >= base {
+			address -= base
+		}
+	}
+	if address < 0 {
+		return 0, gerror.Newf("Modbus TCP 点位地址不能小于 0: %s", raw)
+	}
+	return address, nil
+}
+
+func modbusDisplayAddressBase(area string) int {
+	switch area {
+	case "coil":
+		return 1
+	case "discrete_input":
+		return 10001
+	case "input_register":
+		return 30001
+	case "holding_register":
+		return 40001
+	default:
+		return 0
+	}
+}
+
+func modbusValueType(point entity.DevicePoints, metadata map[string]any) string {
+	if value := strings.TrimSpace(gconv.String(metadata["valueType"])); value != "" {
+		return value
+	}
+	return point.ValueType
+}
+
+func modbusMetadataString(metadata map[string]any, key string, fallback string) string {
+	if value := strings.TrimSpace(gconv.String(metadata[key])); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func buildReadPlan(points []runtimev1.ModbusTcpPoint) []runtimev1.ModbusTcpReadBlock {

@@ -290,12 +290,12 @@ ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO device_points (id, device_id, plugin_id, name, description, address, value_type, unit, enabled, tags_json, metadata_json)
 VALUES
-  ('pt-temperature', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'TEMP_01', '环境温度', 'holding_register:40001', 'float', '℃', TRUE, '{"area":"A","kind":"environment"}'::JSONB, '{"area":"holding_register","mode":"read","quantity":2,"byteOrder":"big","wordOrder":"big","scale":1,"offset":0}'::JSONB),
-  ('pt-pressure', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'PRESS_01', '管线压力', 'holding_register:40003', 'float', 'kPa', TRUE, '{"area":"A","kind":"process"}'::JSONB, '{"area":"holding_register","mode":"read","quantity":2,"byteOrder":"big","wordOrder":"big","scale":1,"offset":0}'::JSONB),
-  ('pt-motor-state', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'MOTOR_RUN', '电机运行状态', 'coil:00001', 'bool', '', TRUE, '{"area":"A","kind":"status"}'::JSONB, '{"area":"coil","mode":"read","quantity":1,"byteOrder":"big","wordOrder":"big","scale":1,"offset":0}'::JSONB),
-  ('pt-energy', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'ENERGY_TOTAL', '累计能耗', 'input_register:30001', 'float', 'kWh', TRUE, '{"area":"A","kind":"meter"}'::JSONB, '{"area":"input_register","mode":"read","quantity":2,"byteOrder":"big","wordOrder":"little","scale":1,"offset":0}'::JSONB),
-  ('pt-speed-set', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'SPEED_SET', '速度设定值', 'holding_register:40110', 'int', 'rpm', TRUE, '{"area":"A","kind":"write"}'::JSONB, '{"area":"holding_register","mode":"write","quantity":1,"byteOrder":"big","wordOrder":"big","scale":1,"offset":0}'::JSONB),
-  ('pt-emergency', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'EMERGENCY_STOP', '急停输入状态', 'discrete_input:10001', 'bool', '', TRUE, '{"area":"A","kind":"safety"}'::JSONB, '{"area":"discrete_input","mode":"read","quantity":1,"byteOrder":"big","wordOrder":"big","scale":1,"offset":0}'::JSONB)
+  ('pt-temperature', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'TEMP_01', '环境温度', 'holding_register:40001', 'float', '℃', TRUE, '{"area":"A","kind":"environment"}'::JSONB, '{"area":"holding_register","mode":"read","quantity":2,"valueType":"float32","byteOrder":"big","wordOrder":"big","scale":1,"offset":0}'::JSONB),
+  ('pt-pressure', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'PRESS_01', '管线压力', 'holding_register:40003', 'float', 'kPa', TRUE, '{"area":"A","kind":"process"}'::JSONB, '{"area":"holding_register","mode":"read","quantity":2,"valueType":"float32","byteOrder":"big","wordOrder":"big","scale":1,"offset":0}'::JSONB),
+  ('pt-motor-state', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'MOTOR_RUN', '电机运行状态', 'coil:00001', 'bool', '', TRUE, '{"area":"A","kind":"status"}'::JSONB, '{"area":"coil","mode":"read","quantity":1,"valueType":"bool","byteOrder":"big","wordOrder":"big","scale":1,"offset":0}'::JSONB),
+  ('pt-energy', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'ENERGY_TOTAL', '累计能耗', 'input_register:30001', 'float', 'kWh', TRUE, '{"area":"A","kind":"meter"}'::JSONB, '{"area":"input_register","mode":"read","quantity":2,"valueType":"float32","byteOrder":"big","wordOrder":"little","scale":1,"offset":0}'::JSONB),
+  ('pt-speed-set', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'SPEED_SET', '速度设定值', 'holding_register:40110', 'int', 'rpm', TRUE, '{"area":"A","kind":"write"}'::JSONB, '{"area":"holding_register","mode":"write","quantity":1,"valueType":"uint16","byteOrder":"big","wordOrder":"big","scale":1,"offset":0}'::JSONB),
+  ('pt-emergency', 'dev-edge-gw-a01', 'com.gcoll.modbus-tcp', 'EMERGENCY_STOP', '急停输入状态', 'discrete_input:10001', 'bool', '', TRUE, '{"area":"A","kind":"safety"}'::JSONB, '{"area":"discrete_input","mode":"read","quantity":1,"valueType":"bool","byteOrder":"big","wordOrder":"big","scale":1,"offset":0}'::JSONB)
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
   description = excluded.description,
@@ -362,31 +362,6 @@ ON CONFLICT(device_id, plugin_id) WHERE deleted_at IS NULL DO UPDATE SET
   low_latency_ms = excluded.low_latency_ms,
   high_latency_ms = excluded.high_latency_ms,
   debug_enabled = excluded.debug_enabled,
-  enabled = excluded.enabled,
-  updated_at = NOW();
-
-INSERT INTO modbus_tcp_point_profiles (
-  id, device_id, point_id, plugin_id, version, area, address, quantity, mode,
-  value_type, byte_order, word_order, scale, offset, report_mode, enabled
-)
-VALUES
-  ('mpp-pt-temperature', 'dev-edge-gw-a01', 'pt-temperature', 'com.gcoll.modbus-tcp', 1, 'holding_register', 0, 2, 'read', 'float32', 'big', 'big', 1, 0, 'change', TRUE),
-  ('mpp-pt-pressure', 'dev-edge-gw-a01', 'pt-pressure', 'com.gcoll.modbus-tcp', 1, 'holding_register', 2, 2, 'read', 'float32', 'big', 'big', 1, 0, 'change', TRUE),
-  ('mpp-pt-motor-state', 'dev-edge-gw-a01', 'pt-motor-state', 'com.gcoll.modbus-tcp', 1, 'coil', 0, 1, 'read', 'bool', 'big', 'big', 1, 0, 'change', TRUE),
-  ('mpp-pt-energy', 'dev-edge-gw-a01', 'pt-energy', 'com.gcoll.modbus-tcp', 1, 'input_register', 0, 2, 'read', 'float32', 'big', 'little', 1, 0, 'change', TRUE),
-  ('mpp-pt-speed-set', 'dev-edge-gw-a01', 'pt-speed-set', 'com.gcoll.modbus-tcp', 1, 'holding_register', 109, 1, 'write', 'uint16', 'big', 'big', 1, 0, 'change', TRUE),
-  ('mpp-pt-emergency', 'dev-edge-gw-a01', 'pt-emergency', 'com.gcoll.modbus-tcp', 1, 'discrete_input', 0, 1, 'read', 'bool', 'big', 'big', 1, 0, 'change', TRUE)
-ON CONFLICT(point_id, plugin_id) WHERE deleted_at IS NULL DO UPDATE SET
-  area = excluded.area,
-  address = excluded.address,
-  quantity = excluded.quantity,
-  mode = excluded.mode,
-  value_type = excluded.value_type,
-  byte_order = excluded.byte_order,
-  word_order = excluded.word_order,
-  scale = excluded.scale,
-  offset = excluded.offset,
-  report_mode = excluded.report_mode,
   enabled = excluded.enabled,
   updated_at = NOW();
 

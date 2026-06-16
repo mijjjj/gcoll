@@ -110,33 +110,6 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDevicePointRe
 		}); err != nil {
 			return gerror.Wrap(err, "新增设备点位版本失败")
 		}
-		if req.PluginId == modbusPluginId {
-			if _, err := tx.Insert(dao.ModbusTcpPointProfiles.Table(), do.ModbusTcpPointProfiles{
-				Id:        "mpp-" + pointId,
-				DeviceId:  req.DeviceId,
-				PointId:   pointId,
-				PluginId:  req.PluginId,
-				Version:   1,
-				Area:      gconv.String(req.Metadata["area"]),
-				Address:   gconv.Int(req.Metadata["address"]),
-				Quantity:  gconv.Int(req.Metadata["quantity"]),
-				Mode:      gconv.String(req.Metadata["mode"]),
-				ValueType: gconv.String(req.Metadata["valueType"]),
-				ByteOrder: gconv.String(req.Metadata["byteOrder"]),
-				WordOrder: gconv.String(req.Metadata["wordOrder"]),
-				Scale:     gconv.Float64(req.Metadata["scale"]),
-				Offset:    gconv.Float64(req.Metadata["offset"]),
-				ReportMode: func() string {
-					if value := gconv.String(req.Metadata["reportMode"]); value != "" {
-						return value
-					}
-					return device.ReportMode
-				}(),
-				Enabled: boolInt(req.Enabled),
-			}); err != nil {
-				return gerror.Wrap(err, "新增 Modbus TCP 点位配置失败")
-			}
-		}
 		return nil
 	}); err != nil {
 		return nil, err
