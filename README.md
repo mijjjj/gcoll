@@ -172,32 +172,39 @@ Discovered
 gcoll/
   cmd/
     gcoll-server/
+      main.go
     gcoll-desktop/
     gcoll-cli/
-  internal/
-    app/
-    boot/
-    api/
-    auth/
-    device/
-    point/
-    pluginconfig/
-    pluginmgmt/
-    pluginhost/
-    collector/
-    runtimequeue/
-    pointcache/
-    pipeline/
-    delivery/
-    marketplace/
-    scheduler/
-    storage/
-    secret/
-    observability/
-    eventbus/
   api/
+    runtime/
+      v1/
     openapi/
     proto/
+  internal/
+    boot/
+    cmd/
+    consts/
+    controller/
+      runtime/
+    service/
+      runtime/
+      auth/
+      device/
+      point/
+      pluginconfig/
+      pluginmgmt/
+      pluginhost/
+      collector/
+      runtimequeue/
+      pointcache/
+      pipeline/
+      delivery/
+      marketplace/
+      scheduler/
+      storage/
+      secret/
+      observability/
+      eventbus/
   frontend/
     web/
     desktop/
@@ -213,6 +220,8 @@ gcoll/
     ai/
     adr/
 ```
+
+后端按 GoFrame 推荐三层组织：`api/<domain>/v1` 负责版本化契约，`internal/controller/<domain>` 负责 HTTP 适配，`internal/service/<domain>` 负责领域服务与业务编排。`cmd/<app>/main.go` 只保留入口，运行时装配放在 `internal/cmd`。
 
 当前仓库尚未建立完整代码骨架。实现时应优先遵循 `docs/current/02-系统架构.md` 中的模块边界。
 

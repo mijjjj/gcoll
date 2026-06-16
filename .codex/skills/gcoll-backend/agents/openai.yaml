@@ -1,0 +1,7 @@
+interface:
+  display_name: "gcoll 后端"
+  short_description: "GoFrame API、服务与运行时开发"
+  default_prompt: "使用 $gcoll-backend 修改 gcoll 的 GoFrame 后端模块。"
+
+policy:
+  allow_implicit_invocation: true

@@ -8,7 +8,7 @@
 
 参考图：
 
-![简洁边缘桌面工作台](C:/Users/AIYIN/.codex/generated_images/019ec938-0c42-76b1-b53b-d5127ce6b82b/ig_0f141db1fb6e11c2016a2f9d0630b88191b168e6246bccc120.png)
+![简洁边缘桌面工作台](image.png)
 
 ## 2. 风格关键词
 

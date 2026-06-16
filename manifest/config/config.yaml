@@ -1,0 +1,13 @@
+server:
+  address: ":8260"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+logger:
+  level: "all"
+  stdout: true
+
+database:
+  default:
+    link: "sqlite::@file(manifest/data/gcoll.db)"
+    debug: true

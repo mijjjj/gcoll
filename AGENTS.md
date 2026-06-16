@@ -1,4 +1,18 @@
-# 项目协作指令
+# gcoll Agent 指南
+
+## 项目定位
+
+gcoll 是一套面向设备数据采集、点位管理、插件编排和北向转发的通用采集平台。项目同时覆盖服务器端、Wails 桌面端、Vue 控制台、插件协议、插件 SDK 和内置插件示例。
+
+## 模块入口
+
+- `api/`：HTTP/OpenAPI 与 gRPC/Protocol Buffers 契约。修改公开契约时必须同步 `docs/current/03-插件与点位协议.md` 或相关当前规范。
+- `internal/`：GoFrame 后端核心运行时。修改 Go 代码时使用 `goframe-v2` 和 `.codex/skills/gcoll-backend`。
+- `frontend/web/`：Vue 3 + TypeScript + Vite + Naive UI Web 控制台。开发页面时使用 `.codex/skills/gcoll-front-module`。
+- `frontend/desktop/`：Wails 桌面端前端入口预留，遵循 `docs/current/04-前端设计规范.md`。
+- `plugins/`：插件 SDK、内置插件和示例。修改插件协议、宿主交互或示例时使用 `.codex/skills/gcoll-plugin-workflow`。
+- `manifest/`：GoFrame 配置、国际化和后续数据库迁移入口。
+- `docs/`：当前有效设计与 AI 开发入口。遵循 `docs/AGENTS.md`。
 
 ## 语言要求
 
@@ -34,3 +48,23 @@
 - 当前有效设计以 `docs/current/` 为准；`docs/adr/` 只记录历史决策背景。
 - 需要让 AI 按项目方式持续开发时，优先阅读 `docs/ai/AI开发入口.md`。
 - 如果旧文档与 `docs/current/` 冲突，以 `docs/current/` 为准。
+
+## 跨模块硬规则
+
+- 控制面不得进入高频采集数据路径；数据面不得依赖 HTTP 请求生命周期。
+- 采集明细不落库，最新点位值保存在运行时缓存。
+- 插件不得直接访问宿主数据库；插件配置由宿主保存，敏感值通过宿主密钥存储引用。
+- 南向插件只提交采集记录，不直接转发目标系统；北向插件只接收过滤后的记录，不主动采集设备。
+- 设备配置、点位表、插件配置结构必须分离，并在需要历史追溯时显式版本化。
+- 修改 HTTP API、插件协议、SDK、事件格式或数据库迁移前，先判断是否属于公开契约破坏性变更。
+- 生成或修改代码后运行对应范围验证：后端优先 `go test ./...`，前端优先 `pnpm --dir frontend/web build`。
+
+## 项目技能
+
+- `.codex/skills/gcoll-development`：进行 gcoll 需求、设计、实现和交付时的总入口。
+- `.codex/skills/gcoll-backend`：修改 GoFrame 后端 API、Controller、Service、运行时装配和中间件时使用。
+- `.codex/skills/gcoll-front-module`：开发 Web 控制台页面、路由、状态、API 调用和 Naive UI 交互时使用。
+- `.codex/skills/gcoll-plugin-workflow`：修改插件协议、插件宿主、SDK、内置插件或示例插件时使用。
+- `.codex/skills/gcoll-db-migrate-dao`：引入或调整数据库表、字段、迁移和 GoFrame DAO 生成时使用。
+- `.codex/skills/goframe-enum-refresh`：新增或调整 GoFrame 枚举常量和 `v:"enums"` 校验时使用。
+- `.codex/skills/no-default-fallback`：修改运行时配置、设备配置、插件配置、密钥、外部端点或默认/兜底逻辑时使用。

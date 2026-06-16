@@ -1,0 +1,7 @@
+interface:
+  display_name: "GoFrame 枚举"
+  short_description: "刷新 GoFrame 枚举校验注册"
+  default_prompt: "使用 $goframe-enum-refresh 更新枚举常量并重新生成 GoFrame 枚举注册。"
+
+policy:
+  allow_implicit_invocation: true

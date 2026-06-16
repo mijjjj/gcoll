@@ -1,0 +1,7 @@
+interface:
+  display_name: "gcoll 前端"
+  short_description: "Vue 控制台页面与交互开发"
+  default_prompt: "使用 $gcoll-front-module 新建或更新 gcoll Web 控制台页面。"
+
+policy:
+  allow_implicit_invocation: true

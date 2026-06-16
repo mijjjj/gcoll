@@ -1,0 +1,7 @@
+interface:
+  display_name: "gcoll 开发"
+  short_description: "gcoll 需求、设计、实现与交付入口"
+  default_prompt: "使用 $gcoll-development 按当前文档和验证规则实现一个 gcoll 功能。"
+
+policy:
+  allow_implicit_invocation: true

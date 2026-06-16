@@ -1,0 +1,7 @@
+interface:
+  display_name: "禁止隐式兜底"
+  short_description: "配置、密钥和资源缺失时失败优先"
+  default_prompt: "使用 $no-default-fallback 检查配置查找行为并拒绝隐式兜底。"
+
+policy:
+  allow_implicit_invocation: true

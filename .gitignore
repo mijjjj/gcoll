@@ -1,0 +1,17 @@
+# Go
+bin/
+*.exe
+*.test
+coverage.out
+
+# 前端
+node_modules/
+dist/
+
+# 运行时数据
+manifest/data/
+.codex-*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db

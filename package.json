@@ -1,0 +1,11 @@
+{
+  "name": "gcoll",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "server:dev": "go run ./cmd/gcoll-server",
+    "server:test": "go test ./...",
+    "web:dev": "pnpm --dir frontend/web dev",
+    "web:build": "pnpm --dir frontend/web build"
+  }
+}

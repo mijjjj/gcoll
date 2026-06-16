@@ -1,0 +1,7 @@
+interface:
+  display_name: "gcoll 插件"
+  short_description: "插件协议、宿主、SDK 与示例开发"
+  default_prompt: "使用 $gcoll-plugin-workflow 更新 gcoll 插件协议或 SDK 流程。"
+
+policy:
+  allow_implicit_invocation: true
