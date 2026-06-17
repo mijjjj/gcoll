@@ -3,6 +3,7 @@ package pluginhost
 import (
 	"archive/zip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,7 +25,7 @@ import (
 	"github.com/gogf/gf/v2/util/guid"
 	"gopkg.in/yaml.v3"
 
-	runtimev1 "github.com/mijjjj/gcoll/api/runtime/v1"
+	commonv1 "github.com/mijjjj/gcoll/api/common/v1"
 	"github.com/mijjjj/gcoll/internal/dao"
 	"github.com/mijjjj/gcoll/internal/model/do"
 	"github.com/mijjjj/gcoll/internal/model/entity"
@@ -41,17 +43,26 @@ var defaultService = New()
 
 // Manifest 描述插件目录中的 plugin.yaml。
 type Manifest struct {
-	SchemaVersion int               `yaml:"schemaVersion" json:"schemaVersion"`
-	Id            string            `yaml:"id"            json:"id"`
-	Name          string            `yaml:"name"          json:"name"`
-	Type          string            `yaml:"type"          json:"type"`
-	Version       string            `yaml:"version"       json:"version"`
-	Runtime       string            `yaml:"runtime"       json:"runtime"`
-	Protocol      string            `yaml:"protocol"      json:"protocol"`
-	Entry         map[string]string `yaml:"entry" json:"entry"`
-	Capabilities  []string          `yaml:"capabilities"  json:"capabilities"`
-	Permissions   []string          `yaml:"permissions"   json:"permissions"`
-	ConfigSchema  map[string]any    `yaml:"configSchema"  json:"configSchema"`
+	SchemaVersion    int               `yaml:"schemaVersion" json:"schemaVersion"`
+	Id               string            `yaml:"id"            json:"id"`
+	Name             string            `yaml:"name"          json:"name"`
+	Type             string            `yaml:"type"          json:"type"`
+	Version          string            `yaml:"version"       json:"version"`
+	Runtime          string            `yaml:"runtime"       json:"runtime"`
+	Protocol         string            `yaml:"protocol"      json:"protocol"`
+	Entry            map[string]string `yaml:"entry" json:"entry"`
+	Capabilities     []string          `yaml:"capabilities"  json:"capabilities"`
+	Permissions      []string          `yaml:"permissions"   json:"permissions"`
+	ConfigSchema     map[string]any    `yaml:"configSchema"  json:"configSchema"`
+	CustomConfigPage CustomAssetPage   `yaml:"customConfigPage" json:"customConfigPage"`
+	CustomPointPage  CustomAssetPage   `yaml:"customPointPage"  json:"customPointPage"`
+}
+
+// CustomAssetPage 描述插件自带配置页面资源。
+type CustomAssetPage struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Entry   string `yaml:"entry"   json:"entry"`
+	Script  string `yaml:"script"  json:"script"`
 }
 
 // RuntimePlugin 描述内存中的插件运行时记录。
@@ -166,13 +177,13 @@ func (s *Service) LoadAndStart(ctx context.Context) error {
 }
 
 // List 返回内存插件注册表。
-func (s *Service) List(ctx context.Context) ([]runtimev1.PluginItem, error) {
+func (s *Service) List(ctx context.Context) ([]commonv1.PluginItem, error) {
 	if err := s.ensureLoaded(ctx); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	items := make([]runtimev1.PluginItem, 0, len(s.registry))
+	items := make([]commonv1.PluginItem, 0, len(s.registry))
 	for _, plugin := range s.registry {
 		items = append(items, toPluginItem(plugin))
 	}
@@ -209,8 +220,85 @@ func (s *Service) PluginNameMap(ctx context.Context) (map[string]string, error) 
 	return names, nil
 }
 
+// CustomConfigPageContent 读取插件自带设备配置页内容。
+func (s *Service) CustomConfigPageContent(ctx context.Context, pluginID string) (CustomAssetPage, string, string, error) {
+	plugin, err := s.Plugin(ctx, pluginID)
+	if err != nil {
+		return CustomAssetPage{}, "", "", err
+	}
+	page := plugin.Manifest.CustomConfigPage
+	if !page.Enabled {
+		return page, "", "", nil
+	}
+	html, err := readPluginAsset(plugin.Directory, page.Entry)
+	if err != nil {
+		return page, "", "", err
+	}
+	js := ""
+	if strings.TrimSpace(page.Script) != "" {
+		js, err = readPluginAsset(plugin.Directory, page.Script)
+		if err != nil {
+			return page, "", "", err
+		}
+	}
+	return page, html, js, nil
+}
+
+// CustomPointPageContent 读取插件自带点位配置页内容。
+func (s *Service) CustomPointPageContent(ctx context.Context, pluginID string) (CustomAssetPage, string, string, error) {
+	plugin, err := s.Plugin(ctx, pluginID)
+	if err != nil {
+		return CustomAssetPage{}, "", "", err
+	}
+	page := plugin.Manifest.CustomPointPage
+	if !page.Enabled {
+		return page, "", "", nil
+	}
+	html, err := readPluginAsset(plugin.Directory, page.Entry)
+	if err != nil {
+		return page, "", "", err
+	}
+	js := ""
+	if strings.TrimSpace(page.Script) != "" {
+		js, err = readPluginAsset(plugin.Directory, page.Script)
+		if err != nil {
+			return page, "", "", err
+		}
+	}
+	return page, html, js, nil
+}
+
+// ValidateRuntimeConfig 执行保存前插件配置校验。
+func (s *Service) ValidateRuntimeConfig(ctx context.Context, pluginID string, config map[string]any, points []commonv1.PointItem) error {
+	plugin, err := s.Plugin(ctx, pluginID)
+	if err != nil {
+		return err
+	}
+	if plugin.Status != "running" {
+		return gerror.Newf("插件校验服务未运行: %s", pluginID)
+	}
+	if err := validateConfigSchema(plugin.Manifest.ConfigSchema, config); err != nil {
+		return err
+	}
+	for _, point := range points {
+		if strings.TrimSpace(point.Id) == "" {
+			return gerror.New("点位 ID 不能为空")
+		}
+		if point.PluginId != pluginID {
+			return gerror.Newf("点位插件与设备插件不一致: %s", point.Id)
+		}
+		if strings.TrimSpace(point.Name) == "" {
+			return gerror.Newf("点位名称不能为空: %s", point.Id)
+		}
+		if strings.TrimSpace(point.Address) == "" {
+			return gerror.Newf("点位地址不能为空: %s", point.Id)
+		}
+	}
+	return nil
+}
+
 // ImportPackage 将插件包解压或复制到插件目录，加载到内存并启动插件进程。
-func (s *Service) ImportPackage(ctx context.Context, packagePath string) (*runtimev1.PluginItem, error) {
+func (s *Service) ImportPackage(ctx context.Context, packagePath string) (*commonv1.PluginItem, error) {
 	if strings.TrimSpace(packagePath) == "" {
 		return nil, gerror.New("插件包路径不能为空")
 	}
@@ -749,6 +837,127 @@ func readManifestZip(path string) (*Manifest, error) {
 	return nil, gerror.New("插件包缺少 plugin.yaml")
 }
 
+func readPluginAsset(pluginDir string, assetPath string) (string, error) {
+	assetPath = filepath.Clean(strings.TrimSpace(assetPath))
+	if assetPath == "." || assetPath == "" {
+		return "", gerror.New("插件页面资源路径不能为空")
+	}
+	path := filepath.Clean(filepath.Join(pluginDir, assetPath))
+	if !isPathInside(path, pluginDir) {
+		return "", gerror.Newf("插件页面资源路径越界: %s", assetPath)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", gerror.Wrapf(err, "读取插件页面资源失败: %s", assetPath)
+	}
+	return string(content), nil
+}
+
+func validateConfigSchema(schema map[string]any, config map[string]any) error {
+	if config == nil {
+		return gerror.New("设备插件配置不能为空")
+	}
+	required, _ := schema["required"].([]any)
+	for _, field := range required {
+		name, ok := field.(string)
+		if !ok || strings.TrimSpace(name) == "" {
+			continue
+		}
+		value, exists := config[name]
+		if !exists || isEmptyConfigValue(value) {
+			return gerror.Newf("设备插件配置缺少必填字段: %s", name)
+		}
+	}
+	properties, _ := schema["properties"].(map[string]any)
+	for name, rawProperty := range properties {
+		value, exists := config[name]
+		if !exists || isEmptyConfigValue(value) {
+			continue
+		}
+		property, _ := rawProperty.(map[string]any)
+		if err := validateConfigProperty(name, value, property); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateConfigProperty(name string, value any, property map[string]any) error {
+	rules, _ := property["rules"].(map[string]any)
+	if len(rules) == 0 {
+		rules = property
+	}
+	if maximum, exists := numberRule(rules, "maximum"); exists {
+		if number, ok := numericValue(value); ok && number > maximum {
+			return gerror.Newf("设备插件配置字段 %s 不能大于 %v", name, maximum)
+		}
+	}
+	if minimum, exists := numberRule(rules, "minimum"); exists {
+		if number, ok := numericValue(value); ok && number < minimum {
+			return gerror.Newf("设备插件配置字段 %s 不能小于 %v", name, minimum)
+		}
+	}
+	if maxLength, exists := numberRule(rules, "maxLength"); exists {
+		if text, ok := value.(string); ok && float64(len([]rune(text))) > maxLength {
+			return gerror.Newf("设备插件配置字段 %s 长度不能超过 %v", name, maxLength)
+		}
+	}
+	enumValues, _ := property["enum"].([]any)
+	if len(enumValues) > 0 {
+		text := fmt.Sprint(value)
+		for _, enumValue := range enumValues {
+			if text == fmt.Sprint(enumValue) {
+				return nil
+			}
+		}
+		return gerror.Newf("设备插件配置字段 %s 不在允许范围内", name)
+	}
+	return nil
+}
+
+func numberRule(values map[string]any, key string) (float64, bool) {
+	value, exists := values[key]
+	if !exists {
+		return 0, false
+	}
+	number, ok := numericValue(value)
+	return number, ok
+}
+
+func numericValue(value any) (float64, bool) {
+	switch item := value.(type) {
+	case int:
+		return float64(item), true
+	case int64:
+		return float64(item), true
+	case float64:
+		return item, true
+	case float32:
+		return float64(item), true
+	case json.Number:
+		number, err := item.Float64()
+		return number, err == nil
+	default:
+		text := strings.TrimSpace(gconv.String(value))
+		if text == "" {
+			return 0, false
+		}
+		number, err := strconv.ParseFloat(text, 64)
+		return number, err == nil
+	}
+}
+
+func isEmptyConfigValue(value any) bool {
+	switch item := value.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(item) == ""
+	default:
+		return false
+	}
+}
+
 func validateManifest(manifest *Manifest) error {
 	if manifest.Id == "" {
 		return gerror.New("插件清单缺少 id")
@@ -771,8 +980,8 @@ func validateManifest(manifest *Manifest) error {
 	return nil
 }
 
-func toPluginItem(plugin *RuntimePlugin) runtimev1.PluginItem {
-	return runtimev1.PluginItem{
+func toPluginItem(plugin *RuntimePlugin) commonv1.PluginItem {
+	return commonv1.PluginItem{
 		Id:          plugin.Manifest.Id,
 		Name:        plugin.Manifest.Name,
 		Type:        plugin.Manifest.Type,

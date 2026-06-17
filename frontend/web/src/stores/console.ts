@@ -79,6 +79,12 @@ export const useConsoleStore = defineStore('console', {
         await this.loadDevices()
       })
     },
+    async deleteDeviceGroup(groupId: string) {
+      await this.run(async () => {
+        await consoleApi.deleteDeviceGroup(groupId)
+        await this.loadDevices()
+      })
+    },
     async createDevice(payload: { name: string; code: string; groupId: string; pluginId: string; description: string }) {
       await this.run(async () => {
         const result = await consoleApi.createDevice({
@@ -176,6 +182,15 @@ export const useConsoleStore = defineStore('console', {
           metadata: payload.metadata,
         })
         await this.fetchSelectedDeviceDetails()
+      })
+    },
+    async saveDevicePoints(items: PointItem[]) {
+      if (!this.selectedDeviceId) return
+      await this.run(async () => {
+        const result = await consoleApi.updateDevicePoints(this.selectedDeviceId, items)
+        this.points = result.items
+        await this.fetchDevicePluginConfigPage()
+        await this.loadDevices()
       })
     },
     async startTask(taskId: string) {

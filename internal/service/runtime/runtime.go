@@ -11,7 +11,15 @@ import (
 	"github.com/gogf/gf/v2/util/gconv"
 	"github.com/gogf/gf/v2/util/guid"
 
+	commonv1 "github.com/mijjjj/gcoll/api/common/v1"
+	devicev1 "github.com/mijjjj/gcoll/api/device/v1"
+	logv1 "github.com/mijjjj/gcoll/api/log/v1"
+	pipelinev1 "github.com/mijjjj/gcoll/api/pipeline/v1"
+	pluginv1 "github.com/mijjjj/gcoll/api/plugin/v1"
+	pointcachev1 "github.com/mijjjj/gcoll/api/pointcache/v1"
 	runtimev1 "github.com/mijjjj/gcoll/api/runtime/v1"
+	targetv1 "github.com/mijjjj/gcoll/api/target/v1"
+	taskv1 "github.com/mijjjj/gcoll/api/task/v1"
 	"github.com/mijjjj/gcoll/internal/consts"
 	"github.com/mijjjj/gcoll/internal/dao"
 	"github.com/mijjjj/gcoll/internal/model/do"
@@ -89,13 +97,13 @@ func (s *Service) GetOverview(ctx context.Context) (*runtimev1.OverviewRes, erro
 	}
 
 	return &runtimev1.OverviewRes{
-		Metrics: []runtimev1.MetricItem{
+		Metrics: []commonv1.MetricItem{
 			{Key: "runtime", Label: "运行时", Value: "运行中", Hint: "本机服务", Tone: "primary"},
 			{Key: "devices", Label: "运行设备", Value: gconv.String(onlineCount), Hint: "共 " + gconv.String(len(devices.Items)) + " 台设备", Tone: "success"},
 			{Key: "points", Label: "缓存点位", Value: gconv.String(len(points.Items)), Hint: "最新点位缓存", Tone: "primary"},
 			{Key: "plugins", Label: "插件进程", Value: gconv.String(runningCount) + "/" + gconv.String(len(plugins.Items)), Hint: "本地插件模式", Tone: "warning"},
 		},
-		Runtime: runtimev1.RuntimeStatus{
+		Runtime: commonv1.RuntimeStatus{
 			Status:    "running",
 			Service:   consts.ServiceName,
 			Version:   consts.Version,
@@ -104,7 +112,7 @@ func (s *Service) GetOverview(ctx context.Context) (*runtimev1.OverviewRes, erro
 			ApiBase:   "http://127.0.0.1:8260",
 			Database:  "SQLite 开发模式",
 		},
-		DataPlane: runtimev1.DataPlaneStatus{
+		DataPlane: commonv1.DataPlaneStatus{
 			QueueUsagePercent: 0,
 			RuleHitPercent:    0,
 			ForwardPercent:    0,
@@ -114,11 +122,11 @@ func (s *Service) GetOverview(ctx context.Context) (*runtimev1.OverviewRes, erro
 		},
 		Tasks:        tasks.Items,
 		RecentEvents: logs.Items,
-		PluginSummary: runtimev1.PluginSummary{
+		PluginSummary: commonv1.PluginSummary{
 			Running: runningCount,
 			Total:   len(plugins.Items),
 		},
-		Network: runtimev1.RuntimeDependency{
+		Network: commonv1.RuntimeDependency{
 			Name:   "网络状态",
 			Status: "offline",
 			Detail: "离线模式",
@@ -127,65 +135,73 @@ func (s *Service) GetOverview(ctx context.Context) (*runtimev1.OverviewRes, erro
 }
 
 // GetPlugins 返回内存插件列表。
-func (s *Service) GetPlugins(ctx context.Context) (*runtimev1.PluginsRes, error) {
+func (s *Service) GetPlugins(ctx context.Context) (*pluginv1.PluginsRes, error) {
 	items, err := s.pluginSvc.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &runtimev1.PluginsRes{Items: items}, nil
+	return &pluginv1.PluginsRes{Items: items}, nil
 }
 
 // ImportPlugin 导入插件清单并返回插件列表项。
-func (s *Service) ImportPlugin(ctx context.Context, packagePath string) (*runtimev1.ImportPluginRes, error) {
+func (s *Service) ImportPlugin(ctx context.Context, packagePath string) (*pluginv1.ImportPluginRes, error) {
 	item, err := s.pluginSvc.Import(ctx, packagePath)
 	if err != nil {
 		return nil, err
 	}
-	return &runtimev1.ImportPluginRes{Plugin: *item}, nil
+	return &pluginv1.ImportPluginRes{Plugin: *item}, nil
 }
 
 // GetDevices 返回设备列表和分组。
-func (s *Service) GetDevices(ctx context.Context) (*runtimev1.DevicesRes, error) {
+func (s *Service) GetDevices(ctx context.Context) (*devicev1.DevicesRes, error) {
 	return s.deviceSvc.List(ctx)
 }
 
 // CreateDeviceGroup 新增设备分组。
-func (s *Service) CreateDeviceGroup(ctx context.Context, req *runtimev1.CreateDeviceGroupReq) (*runtimev1.CreateDeviceGroupRes, error) {
+func (s *Service) CreateDeviceGroup(ctx context.Context, req *devicev1.CreateDeviceGroupReq) (*devicev1.CreateDeviceGroupRes, error) {
 	group, err := s.deviceSvc.CreateGroup(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return &runtimev1.CreateDeviceGroupRes{Group: *group}, nil
+	return &devicev1.CreateDeviceGroupRes{Group: *group}, nil
+}
+
+// DeleteDeviceGroup 删除空设备分组。
+func (s *Service) DeleteDeviceGroup(ctx context.Context, groupId string) (*devicev1.DeleteDeviceGroupRes, error) {
+	if err := s.deviceSvc.DeleteGroup(ctx, groupId); err != nil {
+		return nil, err
+	}
+	return &devicev1.DeleteDeviceGroupRes{GroupId: groupId}, nil
 }
 
 // CreateDevice 新增设备和设备插件配置。
-func (s *Service) CreateDevice(ctx context.Context, req *runtimev1.CreateDeviceReq) (*runtimev1.CreateDeviceRes, error) {
+func (s *Service) CreateDevice(ctx context.Context, req *devicev1.CreateDeviceReq) (*devicev1.CreateDeviceRes, error) {
 	item, err := s.deviceSvc.Create(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return &runtimev1.CreateDeviceRes{Device: *item}, nil
+	return &devicev1.CreateDeviceRes{Device: *item}, nil
 }
 
 // MoveDeviceToGroup 移动设备所属分组。
-func (s *Service) MoveDeviceToGroup(ctx context.Context, req *runtimev1.MoveDeviceToGroupReq) (*runtimev1.MoveDeviceToGroupRes, error) {
+func (s *Service) MoveDeviceToGroup(ctx context.Context, req *devicev1.MoveDeviceToGroupReq) (*devicev1.MoveDeviceToGroupRes, error) {
 	item, err := s.deviceSvc.MoveToGroup(ctx, req.DeviceId, req.GroupId)
 	if err != nil {
 		return nil, err
 	}
-	return &runtimev1.MoveDeviceToGroupRes{Device: *item}, nil
+	return &devicev1.MoveDeviceToGroupRes{Device: *item}, nil
 }
 
 // DeleteDevice 删除设备及其控制面关联数据。
-func (s *Service) DeleteDevice(ctx context.Context, deviceId string) (*runtimev1.DeleteDeviceRes, error) {
+func (s *Service) DeleteDevice(ctx context.Context, deviceId string) (*devicev1.DeleteDeviceRes, error) {
 	if err := s.deviceSvc.Delete(ctx, deviceId); err != nil {
 		return nil, err
 	}
-	return &runtimev1.DeleteDeviceRes{DeviceId: deviceId}, nil
+	return &devicev1.DeleteDeviceRes{DeviceId: deviceId}, nil
 }
 
 // GetDevicePluginConfigPage 返回指定设备的通用插件配置页数据。
-func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string) (*runtimev1.DevicePluginConfigPageRes, error) {
+func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string) (*devicev1.DevicePluginConfigPageRes, error) {
 	device, err := s.deviceSvc.Get(ctx, deviceId)
 	if err != nil {
 		return nil, err
@@ -206,9 +222,17 @@ func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string
 	if err != nil {
 		return nil, err
 	}
+	configPage, configHtml, configJs, err := s.pluginHostSvc.CustomConfigPageContent(ctx, device.PluginId)
+	if err != nil {
+		return nil, err
+	}
+	pointPage, pointHtml, pointJs, err := s.pluginHostSvc.CustomPointPageContent(ctx, device.PluginId)
+	if err != nil {
+		return nil, err
+	}
 
-	return &runtimev1.DevicePluginConfigPageRes{
-		Plugin: runtimev1.PluginItem{
+	return &devicev1.DevicePluginConfigPageRes{
+		Plugin: commonv1.PluginItem{
 			Id:          plugin.Manifest.Id,
 			Name:        plugin.Manifest.Name,
 			Type:        plugin.Manifest.Type,
@@ -219,7 +243,7 @@ func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string
 			Permissions: plugin.Manifest.Permissions,
 			UpdatedAt:   plugin.UpdatedAt,
 		},
-		Device: runtimev1.DeviceItem{
+		Device: commonv1.DeviceItem{
 			Id:          device.Id,
 			Name:        device.Name,
 			Code:        device.Code,
@@ -235,10 +259,24 @@ func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string
 		},
 		Config:       config,
 		ConfigSchema: emptyAnyMap(plugin.Manifest.ConfigSchema),
+		CustomConfigPage: commonv1.PluginCustomConfigPage{
+			Enabled: configPage.Enabled,
+			Entry:   configPage.Entry,
+			Script:  configPage.Script,
+			Html:    configHtml,
+			Js:      configJs,
+		},
+		CustomPointPage: commonv1.PluginCustomPointPage{
+			Enabled: pointPage.Enabled,
+			Entry:   pointPage.Entry,
+			Script:  pointPage.Script,
+			Html:    pointHtml,
+			Js:      pointJs,
+		},
 		Configured:   configured,
 		Points:       points.Items,
 		RecentEvents: events,
-		Operations: []runtimev1.PluginOperation{
+		Operations: []commonv1.PluginOperation{
 			{Key: "saveConfig", Label: "保存配置", Description: "保存当前设备的插件运行配置。", Enabled: true},
 			{Key: "test", Label: "测试连接", Description: "通过南向插件 gRPC 服务测试连接。", Enabled: configured},
 			{Key: "startTask", Label: "启动采集", Description: "启动设备采集任务并等待插件上报。", Enabled: configured && len(points.Items) > 0},
@@ -251,21 +289,21 @@ func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string
 }
 
 // UpdateDevicePluginConfig 保存指定设备的通用插件配置。
-func (s *Service) UpdateDevicePluginConfig(ctx context.Context, req *runtimev1.UpdateDevicePluginConfigReq) (*runtimev1.UpdateDevicePluginConfigRes, error) {
+func (s *Service) UpdateDevicePluginConfig(ctx context.Context, req *devicev1.UpdateDevicePluginConfigReq) (*devicev1.UpdateDevicePluginConfigRes, error) {
 	config, err := s.deviceSvc.SavePluginConfig(ctx, req.DeviceId, req.Config)
 	if err != nil {
 		return nil, err
 	}
-	return &runtimev1.UpdateDevicePluginConfigRes{Config: config}, nil
+	return &devicev1.UpdateDevicePluginConfigRes{Config: config}, nil
 }
 
 // TestDevicePluginConnection 测试指定设备的插件连接。
-func (s *Service) TestDevicePluginConnection(ctx context.Context, deviceId string) (*runtimev1.TestDevicePluginConnectionRes, error) {
+func (s *Service) TestDevicePluginConnection(ctx context.Context, deviceId string) (*devicev1.TestDevicePluginConnectionRes, error) {
 	result, err := s.pluginHostSvc.TestConnection(ctx, deviceId)
 	if result == nil {
 		return nil, err
 	}
-	res := &runtimev1.TestDevicePluginConnectionRes{
+	res := &devicev1.TestDevicePluginConnectionRes{
 		Success:   result.Success,
 		Message:   result.Message,
 		LatencyMs: result.LatencyMs,
@@ -278,21 +316,30 @@ func (s *Service) TestDevicePluginConnection(ctx context.Context, deviceId strin
 }
 
 // GetDevicePoints 返回指定设备的通用点位表。
-func (s *Service) GetDevicePoints(ctx context.Context, deviceId string) (*runtimev1.DevicePointsRes, error) {
+func (s *Service) GetDevicePoints(ctx context.Context, deviceId string) (*devicev1.DevicePointsRes, error) {
 	return s.pointSvc.ListByDevice(ctx, deviceId)
 }
 
 // CreateDevicePoint 新增指定设备的通用点位。
-func (s *Service) CreateDevicePoint(ctx context.Context, req *runtimev1.CreateDevicePointReq) (*runtimev1.CreateDevicePointRes, error) {
+func (s *Service) CreateDevicePoint(ctx context.Context, req *devicev1.CreateDevicePointReq) (*devicev1.CreateDevicePointRes, error) {
 	item, err := s.pointSvc.Create(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return &runtimev1.CreateDevicePointRes{Point: *item}, nil
+	return &devicev1.CreateDevicePointRes{Point: *item}, nil
+}
+
+// UpdateDevicePoints 保存指定设备的完整点位表。
+func (s *Service) UpdateDevicePoints(ctx context.Context, req *devicev1.UpdateDevicePointsReq) (*devicev1.UpdateDevicePointsRes, error) {
+	result, err := s.pointSvc.ReplaceByDevice(ctx, req.DeviceId, req.Items)
+	if err != nil {
+		return nil, err
+	}
+	return &devicev1.UpdateDevicePointsRes{Items: result.Items}, nil
 }
 
 // GetTasks 返回采集任务列表。
-func (s *Service) GetTasks(ctx context.Context) (*runtimev1.TasksRes, error) {
+func (s *Service) GetTasks(ctx context.Context) (*taskv1.TasksRes, error) {
 	var (
 		tasks   []entity.CollectionTasks
 		devices []entity.Devices
@@ -321,9 +368,9 @@ func (s *Service) GetTasks(ctx context.Context) (*runtimev1.TasksRes, error) {
 		pointCounts[point.DeviceId]++
 	}
 
-	items := make([]runtimev1.TaskSummary, 0, len(tasks))
+	items := make([]commonv1.TaskSummary, 0, len(tasks))
 	for _, task := range tasks {
-		items = append(items, runtimev1.TaskSummary{
+		items = append(items, commonv1.TaskSummary{
 			Id:              task.Id,
 			Name:            task.Name,
 			DeviceId:        task.DeviceId,
@@ -337,11 +384,11 @@ func (s *Service) GetTasks(ctx context.Context) (*runtimev1.TasksRes, error) {
 			LastCollectedAt: displayTime(task.LastCollectedAt, "尚未采集"),
 		})
 	}
-	return &runtimev1.TasksRes{Items: items}, nil
+	return &taskv1.TasksRes{Items: items}, nil
 }
 
 // StartDeviceCollectionTask 启动设备默认采集任务，缺失任务时创建控制面任务。
-func (s *Service) StartDeviceCollectionTask(ctx context.Context, deviceId string) (*runtimev1.CollectionTaskActionRes, error) {
+func (s *Service) StartDeviceCollectionTask(ctx context.Context, deviceId string) (*taskv1.CollectionTaskActionRes, error) {
 	task, err := s.ensureDeviceTask(ctx, deviceId)
 	if err != nil {
 		return nil, err
@@ -350,7 +397,7 @@ func (s *Service) StartDeviceCollectionTask(ctx context.Context, deviceId string
 }
 
 // StartCollectionTask 启动指定采集任务。
-func (s *Service) StartCollectionTask(ctx context.Context, taskId string) (*runtimev1.CollectionTaskActionRes, error) {
+func (s *Service) StartCollectionTask(ctx context.Context, taskId string) (*taskv1.CollectionTaskActionRes, error) {
 	if err := s.pluginHostSvc.StartTask(ctx, taskId); err != nil {
 		return nil, err
 	}
@@ -358,7 +405,7 @@ func (s *Service) StartCollectionTask(ctx context.Context, taskId string) (*runt
 }
 
 // StopCollectionTask 停止指定采集任务。
-func (s *Service) StopCollectionTask(ctx context.Context, taskId string) (*runtimev1.CollectionTaskActionRes, error) {
+func (s *Service) StopCollectionTask(ctx context.Context, taskId string) (*taskv1.CollectionTaskActionRes, error) {
 	if err := s.pluginHostSvc.StopTask(ctx, taskId); err != nil {
 		return nil, err
 	}
@@ -366,12 +413,12 @@ func (s *Service) StopCollectionTask(ctx context.Context, taskId string) (*runti
 }
 
 // GetPointCache 返回最新点位缓存。
-func (s *Service) GetPointCache(ctx context.Context) *runtimev1.PointCacheRes {
+func (s *Service) GetPointCache(ctx context.Context) *pointcachev1.PointCacheRes {
 	_ = ctx
 	latest := s.pluginHostSvc.LatestValues()
-	items := make([]runtimev1.PointCacheItem, 0, len(latest))
+	items := make([]commonv1.PointCacheItem, 0, len(latest))
 	for _, item := range latest {
-		items = append(items, runtimev1.PointCacheItem{
+		items = append(items, commonv1.PointCacheItem{
 			PointId:   item.PointID,
 			DeviceId:  item.DeviceID,
 			PointName: item.PointName,
@@ -387,15 +434,15 @@ func (s *Service) GetPointCache(ctx context.Context) *runtimev1.PointCacheRes {
 		}
 		return items[i].PointId < items[j].PointId
 	})
-	return &runtimev1.PointCacheRes{Items: items}
+	return &pointcachev1.PointCacheRes{Items: items}
 }
 
 // GetPipelineRules 返回规则过滤列表。
-func (s *Service) GetPipelineRules(ctx context.Context) *runtimev1.PipelineRulesRes {
+func (s *Service) GetPipelineRules(ctx context.Context) *pipelinev1.PipelineRulesRes {
 	_ = ctx
 
-	return &runtimev1.PipelineRulesRes{
-		Items: []runtimev1.PipelineRuleItem{
+	return &pipelinev1.PipelineRulesRes{
+		Items: []commonv1.PipelineRuleItem{
 			{Id: "rule-good-quality", Name: "仅转发良好质量数据", Enabled: true, Expression: "quality == \"good\"", Matched: 0, TargetCount: 0, UpdatedAt: "尚未启用"},
 			{Id: "rule-change-only", Name: "变化值进入北向链路", Enabled: true, Expression: "report_mode == \"change\" && changed == true", Matched: 0, TargetCount: 0, UpdatedAt: "尚未启用"},
 		},
@@ -403,21 +450,21 @@ func (s *Service) GetPipelineRules(ctx context.Context) *runtimev1.PipelineRules
 }
 
 // GetTargets 返回北向转发目标列表。
-func (s *Service) GetTargets(ctx context.Context) *runtimev1.TargetsRes {
+func (s *Service) GetTargets(ctx context.Context) *targetv1.TargetsRes {
 	_ = ctx
 
-	return &runtimev1.TargetsRes{
-		Items: []runtimev1.ForwardTargetItem{},
+	return &targetv1.TargetsRes{
+		Items: []commonv1.ForwardTargetItem{},
 	}
 }
 
 // GetLogs 返回运行日志和事件列表。
-func (s *Service) GetLogs(ctx context.Context) (*runtimev1.LogsRes, error) {
+func (s *Service) GetLogs(ctx context.Context) (*logv1.LogsRes, error) {
 	var events []entity.RuntimeEvents
 	if err := dao.RuntimeEvents.Ctx(ctx).OrderDesc(dao.RuntimeEvents.Columns().Time).Limit(50).Scan(&events); err != nil {
 		return nil, gerror.Wrap(err, "读取运行事件失败")
 	}
-	return &runtimev1.LogsRes{Items: runtimeEvents(events)}, nil
+	return &logv1.LogsRes{Items: runtimeEvents(events)}, nil
 }
 
 func (s *Service) ensureDeviceTask(ctx context.Context, deviceId string) (*entity.CollectionTasks, error) {
@@ -465,14 +512,14 @@ func (s *Service) ensureDeviceTask(ctx context.Context, deviceId string) (*entit
 	return &task, nil
 }
 
-func (s *Service) taskActionResult(ctx context.Context, taskId string) (*runtimev1.CollectionTaskActionRes, error) {
+func (s *Service) taskActionResult(ctx context.Context, taskId string) (*taskv1.CollectionTaskActionRes, error) {
 	tasks, err := s.GetTasks(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for _, task := range tasks.Items {
 		if task.Id == taskId {
-			return &runtimev1.CollectionTaskActionRes{Task: task}, nil
+			return &taskv1.CollectionTaskActionRes{Task: task}, nil
 		}
 	}
 	return nil, gerror.Newf("采集任务不存在: %s", taskId)
@@ -497,7 +544,7 @@ func (s *Service) deviceConfig(ctx context.Context, deviceId string, pluginId st
 	return values, true, nil
 }
 
-func (s *Service) recentDeviceEvents(ctx context.Context, deviceId string) ([]runtimev1.RuntimeEvent, error) {
+func (s *Service) recentDeviceEvents(ctx context.Context, deviceId string) ([]commonv1.RuntimeEvent, error) {
 	var events []entity.RuntimeEvents
 	if err := dao.RuntimeEvents.Ctx(ctx).
 		Where(do.RuntimeEvents{DeviceId: deviceId}).
@@ -509,10 +556,10 @@ func (s *Service) recentDeviceEvents(ctx context.Context, deviceId string) ([]ru
 	return runtimeEvents(events), nil
 }
 
-func runtimeEvents(events []entity.RuntimeEvents) []runtimev1.RuntimeEvent {
-	items := make([]runtimev1.RuntimeEvent, 0, len(events))
+func runtimeEvents(events []entity.RuntimeEvents) []commonv1.RuntimeEvent {
+	items := make([]commonv1.RuntimeEvent, 0, len(events))
 	for _, event := range events {
-		items = append(items, runtimev1.RuntimeEvent{
+		items = append(items, commonv1.RuntimeEvent{
 			Id:       event.Id,
 			Time:     event.Time,
 			Level:    event.Level,

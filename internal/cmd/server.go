@@ -8,7 +8,14 @@ import (
 	"github.com/gogf/gf/v2/net/goai"
 
 	"github.com/mijjjj/gcoll/internal/boot"
+	devicectrl "github.com/mijjjj/gcoll/internal/controller/device"
+	logctrl "github.com/mijjjj/gcoll/internal/controller/log"
+	pipelinectrl "github.com/mijjjj/gcoll/internal/controller/pipeline"
+	pluginctrl "github.com/mijjjj/gcoll/internal/controller/plugin"
+	pointcachectrl "github.com/mijjjj/gcoll/internal/controller/pointcache"
 	runtimectrl "github.com/mijjjj/gcoll/internal/controller/runtime"
+	targetctrl "github.com/mijjjj/gcoll/internal/controller/target"
+	taskctrl "github.com/mijjjj/gcoll/internal/controller/task"
 	middlewaresvc "github.com/mijjjj/gcoll/internal/service/middleware"
 )
 
@@ -30,13 +37,29 @@ func RunServer(ctx context.Context) {
 // registerRoutes 注册服务端管理 API 路由。
 func registerRoutes(s *ghttp.Server) {
 	var (
-		runtimeController = runtimectrl.NewV1()
-		middlewareService = middlewaresvc.New()
+		deviceController     = devicectrl.NewV1()
+		logController        = logctrl.NewV1()
+		pipelineController   = pipelinectrl.NewV1()
+		pluginController     = pluginctrl.NewV1()
+		pointCacheController = pointcachectrl.NewV1()
+		runtimeController    = runtimectrl.NewV1()
+		targetController     = targetctrl.NewV1()
+		taskController       = taskctrl.NewV1()
+		middlewareService    = middlewaresvc.New()
 	)
 
 	s.Group("/api/v1", func(group *ghttp.RouterGroup) {
 		group.Middleware(middlewareService.Response)
-		group.Bind(runtimeController)
+		group.Bind(
+			runtimeController,
+			pluginController,
+			deviceController,
+			taskController,
+			pointCacheController,
+			pipelineController,
+			targetController,
+			logController,
+		)
 	})
 }
 

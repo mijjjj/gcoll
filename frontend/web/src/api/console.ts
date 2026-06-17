@@ -74,11 +74,21 @@ export interface DevicePluginConfigPage {
   device: DeviceItem
   config: Record<string, unknown>
   configSchema: Record<string, unknown>
+  customConfigPage: PluginAssetPage
+  customPointPage: PluginAssetPage
   configured: boolean
   points: PointItem[]
   recentEvents: RuntimeEvent[]
   operations: PluginOperation[]
   warnings: string[]
+}
+
+export interface PluginAssetPage {
+  enabled: boolean
+  entry: string
+  script: string
+  html: string
+  js: string
 }
 
 export interface TestConnectionResult {
@@ -185,6 +195,10 @@ export const consoleApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  deleteDeviceGroup: (groupId: string) =>
+    request<{ groupId: string }>(`/device-groups/${groupId}`, {
+      method: 'DELETE',
+    }),
   createDevice: (payload: Partial<DeviceItem> & { groupId: string; pluginId: string; reportMode: string; config?: Record<string, unknown> }) =>
     request<{ device: DeviceItem }>('/devices', {
       method: 'POST',
@@ -215,6 +229,11 @@ export const consoleApi = {
     request<{ point: PointItem }>(`/devices/${deviceId}/points`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+  updateDevicePoints: (deviceId: string, items: PointItem[]) =>
+    request<{ items: PointItem[] }>(`/devices/${deviceId}/points`, {
+      method: 'PUT',
+      body: JSON.stringify({ items }),
     }),
   getTasks: () => request<{ items: TaskSummary[] }>('/tasks'),
   startDeviceTask: (deviceId: string) =>

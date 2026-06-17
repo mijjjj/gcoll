@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Modbus TCP 设备配置</title>
+    <style>
+      :root {
+        color: #0f172a;
+        background: #ffffff;
+        font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 14px;
+        background: #ffffff;
+      }
+
+      form {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px 14px;
+      }
+
+      label {
+        display: grid;
+        gap: 5px;
+        color: #475569;
+        font-size: 12px;
+        line-height: 18px;
+      }
+
+      input,
+      select {
+        width: 100%;
+        height: 34px;
+        border: 1px solid #d8e2ec;
+        border-radius: 6px;
+        padding: 0 10px;
+        color: #0f172a;
+        background: #ffffff;
+        font-size: 13px;
+      }
+
+      .full {
+        grid-column: 1 / -1;
+      }
+
+      .actions {
+        display: flex;
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+        gap: 8px;
+        padding-top: 4px;
+      }
+
+      button {
+        height: 32px;
+        border: 1px solid #d8e2ec;
+        border-radius: 6px;
+        padding: 0 12px;
+        color: #0f172a;
+        background: #f8fafc;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: #0ea5e9;
+        color: #ffffff;
+        background: #0ea5e9;
+      }
+
+      .hint {
+        grid-column: 1 / -1;
+        margin: 0;
+        color: #64748b;
+        font-size: 12px;
+        line-height: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="modbus-config-form">
+      <label>
+        主机地址
+        <input name="host" required maxlength="255" placeholder="192.168.1.10" />
+      </label>
+      <label>
+        端口
+        <input name="port" type="number" min="1" max="65535" />
+      </label>
+      <label>
+        Unit ID
+        <input name="unitId" type="number" min="0" max="247" />
+      </label>
+      <label>
+        超时时间 ms
+        <input name="timeoutMs" type="number" min="100" max="60000" />
+      </label>
+      <label>
+        轮询间隔 ms
+        <input name="pollIntervalMs" type="number" min="100" max="86400000" />
+      </label>
+      <label>
+        上报模式
+        <select name="reportMode">
+          <option value="change">变化上报</option>
+          <option value="all">全部上报</option>
+        </select>
+      </label>
+      <label>
+        线圈批量读取长度
+        <input name="maxCoilBatch" type="number" min="1" max="2000" />
+      </label>
+      <label>
+        寄存器批量读取长度
+        <input name="maxRegisterBatch" type="number" min="1" max="125" />
+      </label>
+      <label>
+        调试日志窗口
+        <input name="debugLogLimit" type="number" min="1" max="5000" />
+      </label>
+      <label>
+        单请求重试次数
+        <input name="maxRetryPerRequest" type="number" min="1" max="5" />
+      </label>
+      <p class="hint">此页面只负责编辑体验，保存、测试和最终校验均由宿主完成。</p>
+      <div class="actions">
+        <button type="button" id="test-button">测试连接</button>
+        <button type="submit" class="primary">保存配置</button>
+      </div>
+    </form>
+  </body>
+</html>

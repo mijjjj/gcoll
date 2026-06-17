@@ -9,22 +9,26 @@ import (
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/util/guid"
 
-	runtimev1 "github.com/mijjjj/gcoll/api/runtime/v1"
+	commonv1 "github.com/mijjjj/gcoll/api/common/v1"
+	devicev1 "github.com/mijjjj/gcoll/api/device/v1"
 	"github.com/mijjjj/gcoll/internal/dao"
 	"github.com/mijjjj/gcoll/internal/model/do"
 	"github.com/mijjjj/gcoll/internal/model/entity"
+	pluginhostsvc "github.com/mijjjj/gcoll/internal/service/pluginhost"
 )
 
 // Service 提供点位表服务。
-type Service struct{}
+type Service struct {
+	pluginHost *pluginhostsvc.Service
+}
 
 // New 创建点位表服务。
 func New() *Service {
-	return &Service{}
+	return &Service{pluginHost: pluginhostsvc.Instance()}
 }
 
 // ListByDevice 返回指定设备的通用点位表。
-func (s *Service) ListByDevice(ctx context.Context, deviceId string) (*runtimev1.DevicePointsRes, error) {
+func (s *Service) ListByDevice(ctx context.Context, deviceId string) (*devicev1.DevicePointsRes, error) {
 	device, err := s.getDevice(ctx, deviceId)
 	if err != nil {
 		return nil, err
@@ -37,15 +41,15 @@ func (s *Service) ListByDevice(ctx context.Context, deviceId string) (*runtimev1
 		return nil, gerror.Wrapf(err, "读取设备点位失败: %s", deviceId)
 	}
 
-	items := make([]runtimev1.PointItem, 0, len(points))
+	items := make([]commonv1.PointItem, 0, len(points))
 	for _, point := range points {
 		items = append(items, toPointItem(point))
 	}
-	return &runtimev1.DevicePointsRes{Items: items}, nil
+	return &devicev1.DevicePointsRes{Items: items}, nil
 }
 
 // Create 为设备新增点位。
-func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDevicePointReq) (*runtimev1.PointItem, error) {
+func (s *Service) Create(ctx context.Context, req *devicev1.CreateDevicePointReq) (*commonv1.PointItem, error) {
 	device, err := s.getDevice(ctx, req.DeviceId)
 	if err != nil {
 		return nil, err
@@ -74,6 +78,31 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDevicePointRe
 	})
 	if err != nil {
 		return nil, gerror.Wrap(err, "序列化点位版本失败")
+	}
+
+	item := commonv1.PointItem{
+		Id:          pointId,
+		DeviceId:    req.DeviceId,
+		PluginId:    req.PluginId,
+		Name:        req.Name,
+		Description: req.Description,
+		Address:     req.Address,
+		ValueType:   req.ValueType,
+		Unit:        req.Unit,
+		Enabled:     req.Enabled,
+		Tags:        emptyStringMap(req.Tags),
+		Metadata:    emptyAnyMap(req.Metadata),
+	}
+	currentPoints, err := s.currentPoints(ctx, req.DeviceId)
+	if err != nil {
+		return nil, err
+	}
+	config, err := s.currentConfig(ctx, req.DeviceId, device.PluginId)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.pluginHost.ValidateRuntimeConfig(ctx, device.PluginId, config, append(currentPoints, item)); err != nil {
+		return nil, err
 	}
 
 	if err := dao.DevicePoints.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
@@ -109,20 +138,95 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDevicePointRe
 		return nil, err
 	}
 
-	item := runtimev1.PointItem{
-		Id:          pointId,
-		DeviceId:    req.DeviceId,
-		PluginId:    req.PluginId,
-		Name:        req.Name,
-		Description: req.Description,
-		Address:     req.Address,
-		ValueType:   req.ValueType,
-		Unit:        req.Unit,
-		Enabled:     req.Enabled,
-		Tags:        emptyStringMap(req.Tags),
-		Metadata:    emptyAnyMap(req.Metadata),
-	}
 	return &item, nil
+}
+
+// ReplaceByDevice 保存设备完整点位表。
+func (s *Service) ReplaceByDevice(ctx context.Context, deviceId string, items []commonv1.PointItem) (*devicev1.DevicePointsRes, error) {
+	device, err := s.getDevice(ctx, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	normalized := make([]commonv1.PointItem, 0, len(items))
+	for _, item := range items {
+		item.DeviceId = device.Id
+		item.PluginId = device.PluginId
+		if strings.TrimSpace(item.Id) == "" {
+			item.Id = "pt-" + guid.S()
+		}
+		item.Tags = emptyStringMap(item.Tags)
+		item.Metadata = emptyAnyMap(item.Metadata)
+		normalized = append(normalized, item)
+	}
+	config, err := s.currentConfig(ctx, device.Id, device.PluginId)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.pluginHost.ValidateRuntimeConfig(ctx, device.PluginId, config, normalized); err != nil {
+		return nil, err
+	}
+
+	var existing []entity.DevicePoints
+	if err := dao.DevicePoints.Ctx(ctx).Where(do.DevicePoints{DeviceId: device.Id}).Scan(&existing); err != nil {
+		return nil, gerror.Wrapf(err, "读取设备现有点位失败: %s", device.Id)
+	}
+	existingMap := map[string]entity.DevicePoints{}
+	for _, point := range existing {
+		existingMap[point.Id] = point
+	}
+	keep := map[string]bool{}
+
+	if err := dao.DevicePoints.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		for _, item := range normalized {
+			keep[item.Id] = true
+			tagsJSON, err := json.Marshal(emptyStringMap(item.Tags))
+			if err != nil {
+				return gerror.Wrap(err, "序列化点位标签失败")
+			}
+			metadataJSON, err := json.Marshal(emptyAnyMap(item.Metadata))
+			if err != nil {
+				return gerror.Wrap(err, "序列化点位扩展信息失败")
+			}
+			data := do.DevicePoints{
+				Id:           item.Id,
+				DeviceId:     item.DeviceId,
+				PluginId:     item.PluginId,
+				Name:         item.Name,
+				Description:  item.Description,
+				Address:      item.Address,
+				ValueType:    item.ValueType,
+				Unit:         item.Unit,
+				Enabled:      boolInt(item.Enabled),
+				TagsJson:     string(tagsJSON),
+				MetadataJson: string(metadataJSON),
+			}
+			if _, exists := existingMap[item.Id]; exists {
+				if _, err := tx.Update(dao.DevicePoints.Table(), data, do.DevicePoints{Id: item.Id}); err != nil {
+					return gerror.Wrap(err, "更新设备点位失败")
+				}
+			} else {
+				if _, err := tx.Insert(dao.DevicePoints.Table(), data); err != nil {
+					return gerror.Wrap(err, "新增设备点位失败")
+				}
+			}
+			if err := insertPointVersion(ctx, tx, item, "保存设备点位表"); err != nil {
+				return err
+			}
+		}
+		for _, point := range existing {
+			if keep[point.Id] {
+				continue
+			}
+			if _, err := tx.Delete(dao.DevicePoints.Table(), do.DevicePoints{Id: point.Id}); err != nil {
+				return gerror.Wrap(err, "删除设备点位失败")
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return s.ListByDevice(ctx, device.Id)
 }
 
 func (s *Service) getDevice(ctx context.Context, deviceId string) (*entity.Devices, error) {
@@ -136,8 +240,60 @@ func (s *Service) getDevice(ctx context.Context, deviceId string) (*entity.Devic
 	return &device, nil
 }
 
-func toPointItem(point entity.DevicePoints) runtimev1.PointItem {
-	return runtimev1.PointItem{
+func (s *Service) currentPoints(ctx context.Context, deviceId string) ([]commonv1.PointItem, error) {
+	result, err := s.ListByDevice(ctx, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	return result.Items, nil
+}
+
+func (s *Service) currentConfig(ctx context.Context, deviceId string, pluginId string) (map[string]any, error) {
+	var config entity.PluginDeviceConfigs
+	if err := dao.PluginDeviceConfigs.Ctx(ctx).Where(do.PluginDeviceConfigs{
+		DeviceId: deviceId,
+		PluginId: pluginId,
+		Active:   1,
+	}).Scan(&config); err != nil {
+		return nil, gerror.Wrapf(err, "读取设备插件配置失败: %s", deviceId)
+	}
+	if config.Id == "" || strings.TrimSpace(config.ConfigJson) == "" {
+		return nil, gerror.Newf("设备缺少插件运行配置: %s", deviceId)
+	}
+	values := map[string]any{}
+	if err := json.Unmarshal([]byte(config.ConfigJson), &values); err != nil {
+		return nil, gerror.Wrapf(err, "解析设备插件配置失败: %s", deviceId)
+	}
+	return values, nil
+}
+
+func insertPointVersion(ctx context.Context, tx gdb.TX, point commonv1.PointItem, note string) error {
+	_ = ctx
+	snapshotJSON, err := json.Marshal(map[string]any{
+		"name":      point.Name,
+		"address":   point.Address,
+		"valueType": point.ValueType,
+		"metadata":  emptyAnyMap(point.Metadata),
+	})
+	if err != nil {
+		return gerror.Wrap(err, "序列化点位版本失败")
+	}
+	if _, err := tx.Insert(dao.DevicePointVersions.Table(), do.DevicePointVersions{
+		Id:           "dpv-" + guid.S(),
+		PointId:      point.Id,
+		DeviceId:     point.DeviceId,
+		PluginId:     point.PluginId,
+		Version:      1,
+		SnapshotJson: string(snapshotJSON),
+		ChangeNote:   note,
+	}); err != nil {
+		return gerror.Wrap(err, "新增设备点位版本失败")
+	}
+	return nil
+}
+
+func toPointItem(point entity.DevicePoints) commonv1.PointItem {
+	return commonv1.PointItem{
 		Id:          point.Id,
 		DeviceId:    point.DeviceId,
 		PluginId:    point.PluginId,

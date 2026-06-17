@@ -514,6 +514,13 @@ textarea {
   overflow: hidden;
 }
 
+.device-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
 .device-browser,
 .device-detail-panel,
 .points-panel {
@@ -1017,6 +1024,36 @@ textarea {
 }
 
 .device-plugin-alert {
+  margin-top: 12px;
+}
+
+.plugin-page-frame {
+  min-height: 0;
+  flex: 1;
+  margin-top: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--color-bg-subtle);
+}
+
+.plugin-page-frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border: 0;
+  background: var(--color-bg-surface);
+}
+
+.plugin-page-frame--points {
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.events-table {
   margin-top: 12px;
 }
 

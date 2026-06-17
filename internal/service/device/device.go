@@ -9,7 +9,8 @@ import (
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/util/guid"
 
-	runtimev1 "github.com/mijjjj/gcoll/api/runtime/v1"
+	commonv1 "github.com/mijjjj/gcoll/api/common/v1"
+	devicev1 "github.com/mijjjj/gcoll/api/device/v1"
 	"github.com/mijjjj/gcoll/internal/dao"
 	"github.com/mijjjj/gcoll/internal/model/do"
 	"github.com/mijjjj/gcoll/internal/model/entity"
@@ -27,7 +28,7 @@ func New() *Service {
 }
 
 // List 返回设备分组和设备列表。
-func (s *Service) List(ctx context.Context) (*runtimev1.DevicesRes, error) {
+func (s *Service) List(ctx context.Context) (*devicev1.DevicesRes, error) {
 	var (
 		groups  []entity.DeviceGroups
 		devices []entity.Devices
@@ -56,12 +57,12 @@ func (s *Service) List(ctx context.Context) (*runtimev1.DevicesRes, error) {
 		groupCounts[device.GroupId]++
 	}
 
-	res := &runtimev1.DevicesRes{
-		Groups: make([]runtimev1.DeviceGroup, 0, len(groups)),
-		Items:  make([]runtimev1.DeviceItem, 0, len(devices)),
+	res := &devicev1.DevicesRes{
+		Groups: make([]commonv1.DeviceGroup, 0, len(groups)),
+		Items:  make([]commonv1.DeviceItem, 0, len(devices)),
 	}
 	for _, group := range groups {
-		res.Groups = append(res.Groups, runtimev1.DeviceGroup{
+		res.Groups = append(res.Groups, commonv1.DeviceGroup{
 			Id:    group.Id,
 			Name:  group.Name,
 			Count: groupCounts[group.Id],
@@ -74,7 +75,7 @@ func (s *Service) List(ctx context.Context) (*runtimev1.DevicesRes, error) {
 }
 
 // CreateGroup 新增设备分组。
-func (s *Service) CreateGroup(ctx context.Context, req *runtimev1.CreateDeviceGroupReq) (*runtimev1.DeviceGroup, error) {
+func (s *Service) CreateGroup(ctx context.Context, req *devicev1.CreateDeviceGroupReq) (*commonv1.DeviceGroup, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		return nil, gerror.New("设备分组名称不能为空")
@@ -85,17 +86,18 @@ func (s *Service) CreateGroup(ctx context.Context, req *runtimev1.CreateDeviceGr
 		groupID = "grp-" + guid.S()
 	}
 
-	var lastGroup entity.DeviceGroups
+	var lastGroups []entity.DeviceGroups
 	if err := dao.DeviceGroups.Ctx(ctx).
 		OrderDesc(dao.DeviceGroups.Columns().SortOrder).
 		OrderDesc(dao.DeviceGroups.Columns().CreatedAt).
-		Scan(&lastGroup); err != nil {
+		Limit(1).
+		Scan(&lastGroups); err != nil {
 		return nil, gerror.Wrap(err, "读取设备分组排序失败")
 	}
 
 	sortOrder := 10
-	if lastGroup.Id != "" {
-		sortOrder = lastGroup.SortOrder + 10
+	if len(lastGroups) > 0 {
+		sortOrder = lastGroups[0].SortOrder + 10
 	}
 	if _, err := dao.DeviceGroups.Ctx(ctx).Data(do.DeviceGroups{
 		Id:        groupID,
@@ -105,15 +107,33 @@ func (s *Service) CreateGroup(ctx context.Context, req *runtimev1.CreateDeviceGr
 		return nil, gerror.Wrap(err, "新增设备分组失败")
 	}
 
-	return &runtimev1.DeviceGroup{
+	return &commonv1.DeviceGroup{
 		Id:    groupID,
 		Name:  name,
 		Count: 0,
 	}, nil
 }
 
+// DeleteGroup 删除空设备分组。
+func (s *Service) DeleteGroup(ctx context.Context, groupID string) error {
+	if err := s.ensureGroup(ctx, groupID); err != nil {
+		return err
+	}
+	deviceCount, err := dao.Devices.Ctx(ctx).Where(do.Devices{GroupId: groupID}).Count()
+	if err != nil {
+		return gerror.Wrapf(err, "读取设备分组占用失败: %s", groupID)
+	}
+	if deviceCount > 0 {
+		return gerror.Newf("设备分组下仍有设备，不能删除: %s", groupID)
+	}
+	if _, err := dao.DeviceGroups.Ctx(ctx).Where(do.DeviceGroups{Id: groupID}).Delete(); err != nil {
+		return gerror.Wrapf(err, "删除设备分组失败: %s", groupID)
+	}
+	return nil
+}
+
 // Create 新增设备并按需保存设备插件配置。
-func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDeviceReq) (*runtimev1.DeviceItem, error) {
+func (s *Service) Create(ctx context.Context, req *devicev1.CreateDeviceReq) (*commonv1.DeviceItem, error) {
 	if err := s.ensureGroup(ctx, req.GroupId); err != nil {
 		return nil, err
 	}
@@ -123,7 +143,7 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDeviceReq) (*
 	}
 	hasConfig := len(req.Config) > 0
 	if hasConfig {
-		if err := validateConfigBySchema(plugin.Manifest.ConfigSchema, req.Config); err != nil {
+		if err := s.pluginHost.ValidateRuntimeConfig(ctx, req.PluginId, req.Config, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -188,7 +208,7 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDeviceReq) (*
 		return nil, err
 	}
 
-	return &runtimev1.DeviceItem{
+	return &commonv1.DeviceItem{
 		Id:          deviceId,
 		Name:        req.Name,
 		Code:        req.Code,
@@ -205,7 +225,7 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDeviceReq) (*
 }
 
 // MoveToGroup 移动设备所属分组。
-func (s *Service) MoveToGroup(ctx context.Context, deviceID string, groupID string) (*runtimev1.DeviceItem, error) {
+func (s *Service) MoveToGroup(ctx context.Context, deviceID string, groupID string) (*commonv1.DeviceItem, error) {
 	device, err := s.Get(ctx, deviceID)
 	if err != nil {
 		return nil, err
@@ -280,7 +300,11 @@ func (s *Service) SavePluginConfig(ctx context.Context, deviceId string, config 
 	if err != nil {
 		return nil, err
 	}
-	if err := validateConfigBySchema(plugin.Manifest.ConfigSchema, config); err != nil {
+	points, err := s.devicePoints(ctx, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.pluginHost.ValidateRuntimeConfig(ctx, plugin.Manifest.Id, config, points); err != nil {
 		return nil, err
 	}
 	configJSON, err := marshalConfig(config)
@@ -342,6 +366,33 @@ func (s *Service) SavePluginConfig(ctx context.Context, deviceId string, config 
 	return emptyAnyMap(config), nil
 }
 
+func (s *Service) devicePoints(ctx context.Context, deviceId string) ([]commonv1.PointItem, error) {
+	var points []entity.DevicePoints
+	if err := dao.DevicePoints.Ctx(ctx).
+		Where(do.DevicePoints{DeviceId: deviceId}).
+		OrderAsc(dao.DevicePoints.Columns().CreatedAt).
+		Scan(&points); err != nil {
+		return nil, gerror.Wrapf(err, "读取设备点位失败: %s", deviceId)
+	}
+	items := make([]commonv1.PointItem, 0, len(points))
+	for _, point := range points {
+		items = append(items, commonv1.PointItem{
+			Id:          point.Id,
+			DeviceId:    point.DeviceId,
+			PluginId:    point.PluginId,
+			Name:        point.Name,
+			Description: point.Description,
+			Address:     point.Address,
+			ValueType:   point.ValueType,
+			Unit:        point.Unit,
+			Enabled:     point.Enabled == 1,
+			Tags:        stringMapFromJSON(point.TagsJson),
+			Metadata:    anyMapFromJSON(point.MetadataJson),
+		})
+	}
+	return items, nil
+}
+
 // Get 返回指定设备。
 func (s *Service) Get(ctx context.Context, deviceId string) (*entity.Devices, error) {
 	var item entity.Devices
@@ -369,7 +420,7 @@ func (s *Service) ensurePlugin(ctx context.Context, pluginId string) (*pluginhos
 	return s.pluginHost.Plugin(ctx, pluginId)
 }
 
-func (s *Service) buildDeviceItem(ctx context.Context, device entity.Devices) (*runtimev1.DeviceItem, error) {
+func (s *Service) buildDeviceItem(ctx context.Context, device entity.Devices) (*commonv1.DeviceItem, error) {
 	plugin, err := s.ensurePlugin(ctx, device.PluginId)
 	if err != nil {
 		return nil, err
@@ -382,8 +433,8 @@ func (s *Service) buildDeviceItem(ctx context.Context, device entity.Devices) (*
 	return &item, nil
 }
 
-func (s *Service) toDeviceItem(device entity.Devices, pluginName string, pointCount int) runtimev1.DeviceItem {
-	return runtimev1.DeviceItem{
+func (s *Service) toDeviceItem(device entity.Devices, pluginName string, pointCount int) commonv1.DeviceItem {
+	return commonv1.DeviceItem{
 		Id:          device.Id,
 		Name:        device.Name,
 		Code:        device.Code,
@@ -396,35 +447,6 @@ func (s *Service) toDeviceItem(device entity.Devices, pluginName string, pointCo
 		ReportMode:  device.ReportMode,
 		LastSeenAt:  displayTime(device.LastSeenAt, "尚未连接"),
 		Description: device.Description,
-	}
-}
-
-func validateConfigBySchema(schema map[string]any, config map[string]any) error {
-	if config == nil {
-		return gerror.New("设备插件配置不能为空")
-	}
-	required, _ := schema["required"].([]any)
-	for _, field := range required {
-		name, ok := field.(string)
-		if !ok || strings.TrimSpace(name) == "" {
-			continue
-		}
-		value, exists := config[name]
-		if !exists || isEmptyConfigValue(value) {
-			return gerror.Newf("设备插件配置缺少必填字段: %s", name)
-		}
-	}
-	return nil
-}
-
-func isEmptyConfigValue(value any) bool {
-	switch item := value.(type) {
-	case nil:
-		return true
-	case string:
-		return strings.TrimSpace(item) == ""
-	default:
-		return false
 	}
 }
 
@@ -447,6 +469,24 @@ func emptyAnyMap(values map[string]any) map[string]any {
 	if values == nil {
 		return map[string]any{}
 	}
+	return values
+}
+
+func stringMapFromJSON(raw string) map[string]string {
+	values := map[string]string{}
+	if raw == "" {
+		return values
+	}
+	_ = json.Unmarshal([]byte(raw), &values)
+	return values
+}
+
+func anyMapFromJSON(raw string) map[string]any {
+	values := map[string]any{}
+	if raw == "" {
+		return values
+	}
+	_ = json.Unmarshal([]byte(raw), &values)
 	return values
 }
 

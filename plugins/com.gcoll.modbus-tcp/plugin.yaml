@@ -87,5 +87,8 @@ configSchema:
 customConfigPage:
   enabled: true
   entry: assets/config.html
+  script: assets/config.js
+customPointPage:
+  enabled: false
 signature:
   algorithm: ed25519
