@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { getCurrentLanguage } from '../i18n'
+import { translate } from '../i18n'
 import { fetchRuntimeHealth, type RuntimeHealth } from '../api/runtime'
 
 interface RuntimeState {
@@ -21,8 +21,7 @@ export const useRuntimeStore = defineStore('runtime', {
       try {
         this.health = await fetchRuntimeHealth()
       } catch (error) {
-        const fallback = getCurrentLanguage() === 'en' ? 'Runtime health check failed' : '运行时健康检查失败'
-        this.error = error instanceof Error ? error.message : fallback
+        this.error = error instanceof Error ? error.message : translate('api.runtimeHealthFailed')
       } finally {
         this.loading = false
       }

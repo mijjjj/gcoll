@@ -1,4 +1,4 @@
-import { getCurrentLanguage } from '../i18n'
+import { request } from './http'
 
 export interface RuntimeHealth {
   status: string
@@ -8,27 +8,8 @@ export interface RuntimeHealth {
   checkedAt: string
 }
 
-interface ApiResponse<T> {
-  code: number
-  message: string
-  data: T
-}
-
 export async function fetchRuntimeHealth(): Promise<RuntimeHealth> {
-  const language = getCurrentLanguage()
-  const fallbackMessage = language === 'en' ? 'Runtime health check failed' : '运行时健康检查失败'
-  const searchParams = new URLSearchParams({ lang: language })
-  const response = await fetch(`/api/v1/runtime/health?${searchParams.toString()}`, {
-    headers: {
-      'Accept-Language': language,
-    },
+  return request<RuntimeHealth>('/runtime/health', {
+    fallbackMessageKey: 'api.runtimeHealthFailed',
   })
-  if (!response.ok) {
-    throw new Error(`${fallbackMessage}: ${response.status}`)
-  }
-  const result = (await response.json()) as ApiResponse<RuntimeHealth>
-  if (result.code !== 0) {
-    throw new Error(result.message || fallbackMessage)
-  }
-  return result.data
 }

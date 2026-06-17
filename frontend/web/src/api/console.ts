@@ -1,10 +1,4 @@
-import { getCurrentLanguage } from '../i18n'
-
-interface ApiResponse<T> {
-  code: number
-  message: string
-  data: T
-}
+import { request } from './http'
 
 export interface MetricItem {
   key: string
@@ -68,74 +62,30 @@ export interface PluginItem {
   updatedAt: string
 }
 
-export interface ModbusTcpDeviceConfig {
-  host: string
-  port: number
-  unitId: number
-  timeoutMs: number
-  pollIntervalMs: number
-  reportMode: string
-  debugEnabled: boolean
-  maxCoilBatch: number
-  maxRegisterBatch: number
-  lowLatencyMs: number
-  highLatencyMs: number
-}
-
-export interface ModbusTcpReadBlock {
-  area: string
-  start: number
-  quantity: number
-  pointIds: string[]
-  latencyMs: number
-}
-
-export interface ModbusTcpPoint {
-  id: string
-  name: string
-  area: string
-  address: number
-  quantity: number
-  valueType: string
-  mode: string
-  reportMode: string
-  enabled: boolean
-  byteOrder: string
-  wordOrder: string
-  scale: string
-  current: string
-  quality: string
-  lastReadAt: string
-  description: string
-}
-
-export interface ModbusTcpDebugLog {
-  time: string
-  level: string
-  message: string
-  traceId: string
-  area: string
-  address: string
-  costMs: number
-  rawHex: string
-}
-
-export interface ModbusTcpOperation {
+export interface PluginOperation {
   key: string
   label: string
   description: string
   enabled: boolean
 }
 
-export interface ModbusTcpDeviceConfigPage {
+export interface DevicePluginConfigPage {
   plugin: PluginItem
   device: DeviceItem
-  config: ModbusTcpDeviceConfig
-  readPlan: ModbusTcpReadBlock[]
-  points: ModbusTcpPoint[]
-  debugLogs: ModbusTcpDebugLog[]
-  operations: ModbusTcpOperation[]
+  config: Record<string, unknown>
+  configSchema: Record<string, unknown>
+  configured: boolean
+  points: PointItem[]
+  recentEvents: RuntimeEvent[]
+  operations: PluginOperation[]
   warnings: string[]
+}
+
+export interface TestConnectionResult {
+  success: boolean
+  message: string
+  latencyMs: number
+  traceId: string
 }
 
 export interface DeviceGroup {
@@ -170,6 +120,7 @@ export interface PointItem {
   unit: string
   enabled: boolean
   tags: Record<string, string>
+  metadata?: Record<string, unknown>
 }
 
 export interface TaskSummary {
@@ -226,31 +177,58 @@ export interface OverviewData {
   network: RuntimeDependency
 }
 
-async function request<T>(path: string): Promise<T> {
-  const language = getCurrentLanguage()
-  const searchParams = new URLSearchParams({ lang: language })
-  const response = await fetch(`/api/v1${path}?${searchParams.toString()}`, {
-    headers: {
-      'Accept-Language': language,
-    },
-  })
-  if (!response.ok) {
-    throw new Error(`请求失败: ${response.status}`)
-  }
-  const result = (await response.json()) as ApiResponse<T>
-  if (result.code !== 0) {
-    throw new Error(result.message || '请求失败')
-  }
-  return result.data
-}
-
 export const consoleApi = {
   getOverview: () => request<OverviewData>('/runtime/overview'),
   getPlugins: () => request<{ items: PluginItem[] }>('/plugins'),
+  createDeviceGroup: (payload: { id?: string; name: string }) =>
+    request<{ group: DeviceGroup }>('/device-groups', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  createDevice: (payload: Partial<DeviceItem> & { groupId: string; pluginId: string; reportMode: string; config?: Record<string, unknown> }) =>
+    request<{ device: DeviceItem }>('/devices', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   getDevices: () => request<{ groups: DeviceGroup[]; items: DeviceItem[] }>('/devices'),
-  getModbusTcpDeviceConfigPage: (deviceId: string) => request<ModbusTcpDeviceConfigPage>(`/devices/${deviceId}/protocol-config`),
+  moveDeviceToGroup: (deviceId: string, groupId: string) =>
+    request<{ device: DeviceItem }>(`/devices/${deviceId}/group`, {
+      method: 'PATCH',
+      body: JSON.stringify({ groupId }),
+    }),
+  deleteDevice: (deviceId: string) =>
+    request<{ deviceId: string }>(`/devices/${deviceId}`, {
+      method: 'DELETE',
+    }),
+  getDevicePluginConfigPage: (deviceId: string) => request<DevicePluginConfigPage>(`/devices/${deviceId}/protocol-config`),
+  updateDevicePluginConfig: (deviceId: string, config: Record<string, unknown>) =>
+    request<{ config: Record<string, unknown> }>(`/devices/${deviceId}/protocol-config`, {
+      method: 'PUT',
+      body: JSON.stringify({ config }),
+    }),
+  testDevicePluginConnection: (deviceId: string) =>
+    request<TestConnectionResult>(`/devices/${deviceId}/protocol-config/test`, {
+      method: 'POST',
+    }),
   getDevicePoints: (deviceId: string) => request<{ items: PointItem[] }>(`/devices/${deviceId}/points`),
+  createDevicePoint: (deviceId: string, payload: Partial<PointItem> & { pluginId: string; name: string; address: string; valueType: string; metadata?: Record<string, unknown> }) =>
+    request<{ point: PointItem }>(`/devices/${deviceId}/points`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   getTasks: () => request<{ items: TaskSummary[] }>('/tasks'),
+  startDeviceTask: (deviceId: string) =>
+    request<{ task: TaskSummary }>(`/devices/${deviceId}/tasks/start`, {
+      method: 'POST',
+    }),
+  startTask: (taskId: string) =>
+    request<{ task: TaskSummary }>(`/tasks/${taskId}/start`, {
+      method: 'POST',
+    }),
+  stopTask: (taskId: string) =>
+    request<{ task: TaskSummary }>(`/tasks/${taskId}/stop`, {
+      method: 'POST',
+    }),
   getPointCache: () => request<{ items: PointCacheItem[] }>('/point-cache'),
   getPipelineRules: () => request<{ items: PipelineRuleItem[] }>('/pipeline/rules'),
   getTargets: () => request<{ items: ForwardTargetItem[] }>('/targets'),

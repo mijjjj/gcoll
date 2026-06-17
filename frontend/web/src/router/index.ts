@@ -2,7 +2,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import DashboardView from '../views/DashboardView.vue'
 import DevicesView from '../views/DevicesView.vue'
 import LogsView from '../views/LogsView.vue'
-import ModbusTcpPluginView from '../views/ModbusTcpPluginView.vue'
 import PipelineView from '../views/PipelineView.vue'
 import PluginsView from '../views/PluginsView.vue'
 import PointCacheView from '../views/PointCacheView.vue'
@@ -50,11 +49,6 @@ export const router = createRouter({
       path: '/plugins',
       name: 'plugins',
       component: PluginsView,
-    },
-    {
-      path: '/plugins/modbus-tcp',
-      name: 'modbus-tcp-plugin',
-      component: ModbusTcpPluginView,
     },
     {
       path: '/logs',

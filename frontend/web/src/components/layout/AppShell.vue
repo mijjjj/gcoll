@@ -5,11 +5,13 @@ import {
   lightTheme,
   NButton,
   NConfigProvider,
+  NDialogProvider,
   NGlobalStyle,
   NLayout,
   NLayoutContent,
   NLayoutHeader,
   NLayoutSider,
+  NMessageProvider,
   NMenu,
   NTooltip,
   type GlobalThemeOverrides,
@@ -37,6 +39,7 @@ import {
   X,
 } from '@lucide/vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
+import HttpErrorBridge from '../common/HttpErrorBridge.vue'
 import { useLocaleStore } from '../../i18n'
 
 const route = useRoute()
@@ -103,121 +106,126 @@ watchEffect(() => {
 <template>
   <NConfigProvider :theme="theme" :theme-overrides="themeOverrides">
     <NGlobalStyle />
-    <NLayout class="app-shell" :class="{ 'is-dark': darkMode }" has-sider>
-      <NLayoutSider bordered :width="162" :native-scrollbar="false" class="app-sider">
-        <div class="brand">
-          <div class="brand-mark">g</div>
-          <strong>gcoll</strong>
-        </div>
-
-        <NMenu
-          :value="activeKey"
-          :options="menuOptions"
-          :root-indent="20"
-          :indent="12"
-          class="side-menu"
-          @update:value="handleMenuUpdate"
-        />
-
-        <div class="sider-bottom">
-          <NButton quaternary size="small" class="collapse-btn">
-            <template #icon>
-              <PanelLeftClose :size="16" />
-            </template>
-            {{ t('sidebar.collapse') }}
-          </NButton>
-          <span>v1.2.0</span>
-        </div>
-      </NLayoutSider>
-
-      <NLayout class="app-main">
-        <NLayoutHeader class="topbar">
-          <div class="status-card status-card--db">
-            <div class="status-icon"><Database :size="22" /></div>
-            <div class="status-copy">
-              <strong>{{ t('status.sqlite') }} <span class="status-dot-text">{{ t('common.running') }}</span></strong>
-              <small>~/.gcoll/data/gcoll.db</small>
+    <NMessageProvider>
+      <NDialogProvider>
+        <HttpErrorBridge />
+        <NLayout class="app-shell" :class="{ 'is-dark': darkMode }" has-sider>
+          <NLayoutSider bordered :width="162" :native-scrollbar="false" class="app-sider">
+            <div class="brand">
+              <div class="brand-mark">g</div>
+              <strong>gcoll</strong>
             </div>
-          </div>
 
-          <div class="status-card status-card--api">
-            <div class="status-icon"><Globe2 :size="22" /></div>
-            <div class="status-copy">
-              <strong>{{ t('status.httpApi') }} <span class="status-dot-text">{{ t('common.running') }}</span></strong>
-              <small>http://127.0.0.1:4120</small>
+            <NMenu
+              :value="activeKey"
+              :options="menuOptions"
+              :root-indent="20"
+              :indent="12"
+              class="side-menu"
+              @update:value="handleMenuUpdate"
+            />
+
+            <div class="sider-bottom">
+              <NButton quaternary size="small" class="collapse-btn">
+                <template #icon>
+                  <PanelLeftClose :size="16" />
+                </template>
+                {{ t('sidebar.collapse') }}
+              </NButton>
+              <span>v1.2.0</span>
             </div>
-            <div class="api-key-chip">APIKey</div>
-            <div class="api-secret">sk_live_••••••••••••••</div>
-          </div>
+          </NLayoutSider>
 
-          <div class="status-card status-card--plugin">
-            <div class="status-icon"><Puzzle :size="22" /></div>
-            <div class="status-copy">
-              <strong>{{ t('status.pluginProcess') }}</strong>
-              <small class="success-text">{{ t('status.pluginCount') }}</small>
-            </div>
-          </div>
+          <NLayout class="app-main">
+            <NLayoutHeader class="topbar">
+              <div class="status-card status-card--db">
+                <div class="status-icon"><Database :size="22" /></div>
+                <div class="status-copy">
+                  <strong>{{ t('status.sqlite') }} <span class="status-dot-text">{{ t('common.running') }}</span></strong>
+                  <small>~/.gcoll/data/gcoll.db</small>
+                </div>
+              </div>
 
-          <div class="status-card status-card--network">
-            <div class="status-icon"><Wifi :size="22" /></div>
-            <div class="status-copy">
-              <strong>{{ t('status.network') }}</strong>
-              <small class="warning-text">{{ t('common.offlineMode') }}</small>
-            </div>
-          </div>
+              <div class="status-card status-card--api">
+                <div class="status-icon"><Globe2 :size="22" /></div>
+                <div class="status-copy">
+                  <strong>{{ t('status.httpApi') }} <span class="status-dot-text">{{ t('common.running') }}</span></strong>
+                  <small>http://127.0.0.1:4120</small>
+                </div>
+                <div class="api-key-chip">APIKey</div>
+                <div class="api-secret">sk_live_••••••••••••••</div>
+              </div>
 
-          <div class="theme-switch">
-            <NButton
-              size="small"
-              secondary
-              :aria-label="darkMode ? t('common.theme.switchToLight') : t('common.theme.switchToDark')"
-              @click="darkMode = !darkMode"
-            >
-              <template #icon>
-                <component :is="darkMode ? Sun : Moon" :size="14" />
-              </template>
-              {{ darkMode ? t('common.theme.dark') : t('common.theme.light') }}
-            </NButton>
-            <NButton size="small" secondary :aria-label="t('common.language.switch')" @click="localeStore.toggleLanguage()">
-              <template #icon>
-                <Languages :size="14" />
-              </template>
-              {{ t('common.language.current') }}
-            </NButton>
-          </div>
+              <div class="status-card status-card--plugin">
+                <div class="status-icon"><Puzzle :size="22" /></div>
+                <div class="status-copy">
+                  <strong>{{ t('status.pluginProcess') }}</strong>
+                  <small class="success-text">{{ t('status.pluginCount') }}</small>
+                </div>
+              </div>
 
-          <div class="window-actions">
-            <NTooltip trigger="hover">
-              <template #trigger>
-                <NButton quaternary circle size="small" :aria-label="t('common.minimize')">
-                  <Minus :size="15" />
+              <div class="status-card status-card--network">
+                <div class="status-icon"><Wifi :size="22" /></div>
+                <div class="status-copy">
+                  <strong>{{ t('status.network') }}</strong>
+                  <small class="warning-text">{{ t('common.offlineMode') }}</small>
+                </div>
+              </div>
+
+              <div class="theme-switch">
+                <NButton
+                  size="small"
+                  secondary
+                  :aria-label="darkMode ? t('common.theme.switchToLight') : t('common.theme.switchToDark')"
+                  @click="darkMode = !darkMode"
+                >
+                  <template #icon>
+                    <component :is="darkMode ? Sun : Moon" :size="14" />
+                  </template>
+                  {{ darkMode ? t('common.theme.dark') : t('common.theme.light') }}
                 </NButton>
-              </template>
-              {{ t('common.minimize') }}
-            </NTooltip>
-            <NTooltip trigger="hover">
-              <template #trigger>
-                <NButton quaternary circle size="small" :aria-label="t('common.maximize')">
-                  <Square :size="13" />
+                <NButton size="small" secondary :aria-label="t('common.language.switch')" @click="localeStore.toggleLanguage()">
+                  <template #icon>
+                    <Languages :size="14" />
+                  </template>
+                  {{ t('common.language.current') }}
                 </NButton>
-              </template>
-              {{ t('common.maximize') }}
-            </NTooltip>
-            <NTooltip trigger="hover">
-              <template #trigger>
-                <NButton quaternary circle size="small" :aria-label="t('common.close')">
-                  <X :size="16" />
-                </NButton>
-              </template>
-              {{ t('common.close') }}
-            </NTooltip>
-          </div>
-        </NLayoutHeader>
+              </div>
 
-        <NLayoutContent class="content">
-          <RouterView />
-        </NLayoutContent>
-      </NLayout>
-    </NLayout>
+              <div class="window-actions">
+                <NTooltip trigger="hover">
+                  <template #trigger>
+                    <NButton quaternary circle size="small" :aria-label="t('common.minimize')">
+                      <Minus :size="15" />
+                    </NButton>
+                  </template>
+                  {{ t('common.minimize') }}
+                </NTooltip>
+                <NTooltip trigger="hover">
+                  <template #trigger>
+                    <NButton quaternary circle size="small" :aria-label="t('common.maximize')">
+                      <Square :size="13" />
+                    </NButton>
+                  </template>
+                  {{ t('common.maximize') }}
+                </NTooltip>
+                <NTooltip trigger="hover">
+                  <template #trigger>
+                    <NButton quaternary circle size="small" :aria-label="t('common.close')">
+                      <X :size="16" />
+                    </NButton>
+                  </template>
+                  {{ t('common.close') }}
+                </NTooltip>
+              </div>
+            </NLayoutHeader>
+
+            <NLayoutContent class="content">
+              <RouterView />
+            </NLayoutContent>
+          </NLayout>
+        </NLayout>
+      </NDialogProvider>
+    </NMessageProvider>
   </NConfigProvider>
 </template>

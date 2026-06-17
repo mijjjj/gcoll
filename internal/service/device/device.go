@@ -7,23 +7,23 @@ import (
 
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/errors/gerror"
-	"github.com/gogf/gf/v2/util/gconv"
 	"github.com/gogf/gf/v2/util/guid"
 
 	runtimev1 "github.com/mijjjj/gcoll/api/runtime/v1"
 	"github.com/mijjjj/gcoll/internal/dao"
 	"github.com/mijjjj/gcoll/internal/model/do"
 	"github.com/mijjjj/gcoll/internal/model/entity"
+	pluginhostsvc "github.com/mijjjj/gcoll/internal/service/pluginhost"
 )
 
-const modbusPluginId = "com.gcoll.modbus-tcp"
-
 // Service 提供设备控制面服务。
-type Service struct{}
+type Service struct {
+	pluginHost *pluginhostsvc.Service
+}
 
 // New 创建设备服务。
 func New() *Service {
-	return &Service{}
+	return &Service{pluginHost: pluginhostsvc.Instance()}
 }
 
 // List 返回设备分组和设备列表。
@@ -31,7 +31,6 @@ func (s *Service) List(ctx context.Context) (*runtimev1.DevicesRes, error) {
 	var (
 		groups  []entity.DeviceGroups
 		devices []entity.Devices
-		plugins []entity.Plugins
 		points  []entity.DevicePoints
 	)
 	if err := dao.DeviceGroups.Ctx(ctx).OrderAsc(dao.DeviceGroups.Columns().SortOrder).Scan(&groups); err != nil {
@@ -40,16 +39,13 @@ func (s *Service) List(ctx context.Context) (*runtimev1.DevicesRes, error) {
 	if err := dao.Devices.Ctx(ctx).OrderAsc(dao.Devices.Columns().CreatedAt).Scan(&devices); err != nil {
 		return nil, gerror.Wrap(err, "读取设备列表失败")
 	}
-	if err := dao.Plugins.Ctx(ctx).Scan(&plugins); err != nil {
-		return nil, gerror.Wrap(err, "读取插件列表失败")
-	}
 	if err := dao.DevicePoints.Ctx(ctx).Scan(&points); err != nil {
 		return nil, gerror.Wrap(err, "读取设备点位数量失败")
 	}
 
-	pluginNames := make(map[string]string, len(plugins))
-	for _, plugin := range plugins {
-		pluginNames[plugin.Id] = plugin.Name
+	pluginNames, err := s.pluginHost.PluginNameMap(ctx)
+	if err != nil {
+		return nil, err
 	}
 	pointCounts := make(map[string]int)
 	for _, point := range points {
@@ -72,25 +68,51 @@ func (s *Service) List(ctx context.Context) (*runtimev1.DevicesRes, error) {
 		})
 	}
 	for _, device := range devices {
-		res.Items = append(res.Items, runtimev1.DeviceItem{
-			Id:          device.Id,
-			Name:        device.Name,
-			Code:        device.Code,
-			GroupId:     device.GroupId,
-			PluginId:    device.PluginId,
-			PluginName:  pluginNames[device.PluginId],
-			Status:      device.Status,
-			Enabled:     device.Enabled == 1,
-			PointCount:  pointCounts[device.Id],
-			ReportMode:  device.ReportMode,
-			LastSeenAt:  displayTime(device.LastSeenAt, "尚未连接"),
-			Description: device.Description,
-		})
+		res.Items = append(res.Items, s.toDeviceItem(device, pluginNames[device.PluginId], pointCounts[device.Id]))
 	}
 	return res, nil
 }
 
-// Create 新增设备并保存设备插件配置。
+// CreateGroup 新增设备分组。
+func (s *Service) CreateGroup(ctx context.Context, req *runtimev1.CreateDeviceGroupReq) (*runtimev1.DeviceGroup, error) {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return nil, gerror.New("设备分组名称不能为空")
+	}
+
+	groupID := strings.TrimSpace(req.Id)
+	if groupID == "" {
+		groupID = "grp-" + guid.S()
+	}
+
+	var lastGroup entity.DeviceGroups
+	if err := dao.DeviceGroups.Ctx(ctx).
+		OrderDesc(dao.DeviceGroups.Columns().SortOrder).
+		OrderDesc(dao.DeviceGroups.Columns().CreatedAt).
+		Scan(&lastGroup); err != nil {
+		return nil, gerror.Wrap(err, "读取设备分组排序失败")
+	}
+
+	sortOrder := 10
+	if lastGroup.Id != "" {
+		sortOrder = lastGroup.SortOrder + 10
+	}
+	if _, err := dao.DeviceGroups.Ctx(ctx).Data(do.DeviceGroups{
+		Id:        groupID,
+		Name:      name,
+		SortOrder: sortOrder,
+	}).Insert(); err != nil {
+		return nil, gerror.Wrap(err, "新增设备分组失败")
+	}
+
+	return &runtimev1.DeviceGroup{
+		Id:    groupID,
+		Name:  name,
+		Count: 0,
+	}, nil
+}
+
+// Create 新增设备并按需保存设备插件配置。
 func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDeviceReq) (*runtimev1.DeviceItem, error) {
 	if err := s.ensureGroup(ctx, req.GroupId); err != nil {
 		return nil, err
@@ -99,20 +121,26 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDeviceReq) (*
 	if err != nil {
 		return nil, err
 	}
-	if err := validateDeviceConfig(req.PluginId, req.Config); err != nil {
-		return nil, err
+	hasConfig := len(req.Config) > 0
+	if hasConfig {
+		if err := validateConfigBySchema(plugin.Manifest.ConfigSchema, req.Config); err != nil {
+			return nil, err
+		}
+	}
+	if !hasConfig && req.Enabled {
+		return nil, gerror.New("设备启用前必须先保存有效插件配置")
 	}
 
 	deviceId := strings.TrimSpace(req.Id)
 	if deviceId == "" {
 		deviceId = "dev-" + guid.S()
 	}
-	configJSON, err := json.Marshal(req.Config)
-	if err != nil {
-		return nil, gerror.Wrap(err, "序列化设备插件配置失败")
-	}
 	configId := "pdc-" + deviceId + "-" + strings.ReplaceAll(req.PluginId, ".", "-")
 	configVersionId := configId + "-1"
+	configJSON, err := marshalConfig(req.Config)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := dao.Devices.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
 		_ = ctx
@@ -129,12 +157,15 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDeviceReq) (*
 		}); err != nil {
 			return gerror.Wrap(err, "新增设备失败")
 		}
+		if !hasConfig {
+			return nil
+		}
 		if _, err := tx.Insert(dao.PluginDeviceConfigs.Table(), do.PluginDeviceConfigs{
 			Id:         configId,
 			DeviceId:   deviceId,
 			PluginId:   req.PluginId,
 			Version:    1,
-			ConfigJson: string(configJSON),
+			ConfigJson: configJSON,
 			ReportMode: req.ReportMode,
 			Enabled:    boolInt(req.Enabled),
 			Active:     1,
@@ -147,32 +178,10 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDeviceReq) (*
 			DeviceId:   deviceId,
 			PluginId:   req.PluginId,
 			Version:    1,
-			ConfigJson: string(configJSON),
+			ConfigJson: configJSON,
 			ChangeNote: "初始化设备插件配置",
 		}); err != nil {
 			return gerror.Wrap(err, "新增设备配置版本失败")
-		}
-		if req.PluginId == modbusPluginId {
-			if _, err := tx.Insert(dao.ModbusTcpDeviceProfiles.Table(), do.ModbusTcpDeviceProfiles{
-				Id:               "mdp-" + deviceId,
-				DeviceId:         deviceId,
-				PluginId:         req.PluginId,
-				Version:          1,
-				Host:             gconv.String(req.Config["host"]),
-				Port:             gconv.Int(req.Config["port"]),
-				UnitId:           gconv.Int(req.Config["unitId"]),
-				TimeoutMs:        gconv.Int(req.Config["timeoutMs"]),
-				PollIntervalMs:   gconv.Int(req.Config["pollIntervalMs"]),
-				ReportMode:       req.ReportMode,
-				MaxCoilBatch:     gconv.Int(req.Config["maxCoilBatch"]),
-				MaxRegisterBatch: gconv.Int(req.Config["maxRegisterBatch"]),
-				LowLatencyMs:     gconv.Int(req.Config["lowLatencyMs"]),
-				HighLatencyMs:    gconv.Int(req.Config["highLatencyMs"]),
-				DebugEnabled:     boolInt(gconv.Bool(req.Config["debugEnabled"])),
-				Enabled:          boolInt(req.Enabled),
-			}); err != nil {
-				return gerror.Wrap(err, "新增 Modbus TCP 设备配置失败")
-			}
 		}
 		return nil
 	}); err != nil {
@@ -185,7 +194,7 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDeviceReq) (*
 		Code:        req.Code,
 		GroupId:     req.GroupId,
 		PluginId:    req.PluginId,
-		PluginName:  plugin.Name,
+		PluginName:  plugin.Manifest.Name,
 		Status:      "offline",
 		Enabled:     req.Enabled,
 		PointCount:  0,
@@ -193,6 +202,144 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDeviceReq) (*
 		LastSeenAt:  "尚未连接",
 		Description: req.Description,
 	}, nil
+}
+
+// MoveToGroup 移动设备所属分组。
+func (s *Service) MoveToGroup(ctx context.Context, deviceID string, groupID string) (*runtimev1.DeviceItem, error) {
+	device, err := s.Get(ctx, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureGroup(ctx, groupID); err != nil {
+		return nil, err
+	}
+	if device.GroupId == groupID {
+		return s.buildDeviceItem(ctx, *device)
+	}
+	if _, err := dao.Devices.Ctx(ctx).
+		Where(do.Devices{Id: deviceID}).
+		Data(do.Devices{GroupId: groupID}).
+		Update(); err != nil {
+		return nil, gerror.Wrapf(err, "移动设备分组失败: %s", deviceID)
+	}
+	device.GroupId = groupID
+	return s.buildDeviceItem(ctx, *device)
+}
+
+// Delete 删除设备及其控制面关联数据。
+func (s *Service) Delete(ctx context.Context, deviceID string) error {
+	if _, err := s.Get(ctx, deviceID); err != nil {
+		return err
+	}
+
+	var tasks []entity.CollectionTasks
+	if err := dao.CollectionTasks.Ctx(ctx).
+		Where(do.CollectionTasks{DeviceId: deviceID}).
+		Scan(&tasks); err != nil {
+		return gerror.Wrapf(err, "读取设备采集任务失败: %s", deviceID)
+	}
+	for _, task := range tasks {
+		if err := s.pluginHost.StopTask(ctx, task.Id); err != nil {
+			return gerror.Wrapf(err, "停止设备采集任务失败: %s", task.Id)
+		}
+	}
+
+	if err := dao.Devices.Transaction(ctx, func(ctx context.Context, _ gdb.TX) error {
+		if _, err := dao.PluginDeviceConfigVersions.Ctx(ctx).Where(do.PluginDeviceConfigVersions{DeviceId: deviceID}).Delete(); err != nil {
+			return gerror.Wrap(err, "删除设备插件配置版本失败")
+		}
+		if _, err := dao.PluginDeviceConfigs.Ctx(ctx).Where(do.PluginDeviceConfigs{DeviceId: deviceID}).Delete(); err != nil {
+			return gerror.Wrap(err, "删除设备插件配置失败")
+		}
+		if _, err := dao.DevicePointVersions.Ctx(ctx).Where(do.DevicePointVersions{DeviceId: deviceID}).Delete(); err != nil {
+			return gerror.Wrap(err, "删除设备点位版本失败")
+		}
+		if _, err := dao.DevicePoints.Ctx(ctx).Where(do.DevicePoints{DeviceId: deviceID}).Delete(); err != nil {
+			return gerror.Wrap(err, "删除设备点位失败")
+		}
+		if _, err := dao.CollectionTasks.Ctx(ctx).Where(do.CollectionTasks{DeviceId: deviceID}).Delete(); err != nil {
+			return gerror.Wrap(err, "删除设备采集任务失败")
+		}
+		if _, err := dao.Devices.Ctx(ctx).Where(do.Devices{Id: deviceID}).Delete(); err != nil {
+			return gerror.Wrap(err, "删除设备失败")
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SavePluginConfig 保存设备维度的通用插件运行配置。
+func (s *Service) SavePluginConfig(ctx context.Context, deviceId string, config map[string]any) (map[string]any, error) {
+	device, err := s.Get(ctx, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	plugin, err := s.ensurePlugin(ctx, device.PluginId)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateConfigBySchema(plugin.Manifest.ConfigSchema, config); err != nil {
+		return nil, err
+	}
+	configJSON, err := marshalConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	var current entity.PluginDeviceConfigs
+	if err := dao.PluginDeviceConfigs.Ctx(ctx).Where(do.PluginDeviceConfigs{
+		DeviceId: deviceId,
+		PluginId: device.PluginId,
+		Active:   1,
+	}).Scan(&current); err != nil {
+		return nil, gerror.Wrapf(err, "读取设备插件配置失败: %s", deviceId)
+	}
+	nextVersion := current.Version + 1
+	currentExists := current.Id != ""
+	if current.Id == "" {
+		current.Id = "pdc-" + deviceId + "-" + strings.ReplaceAll(device.PluginId, ".", "-")
+		nextVersion = 1
+	}
+
+	if err := dao.Devices.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		_ = ctx
+		configData := do.PluginDeviceConfigs{
+			Id:         current.Id,
+			DeviceId:   deviceId,
+			PluginId:   device.PluginId,
+			Version:    nextVersion,
+			ConfigJson: configJSON,
+			ReportMode: device.ReportMode,
+			Enabled:    boolInt(device.Enabled == 1),
+			Active:     1,
+		}
+		if currentExists {
+			if _, err := tx.Update(dao.PluginDeviceConfigs.Table(), configData, do.PluginDeviceConfigs{Id: current.Id}); err != nil {
+				return gerror.Wrap(err, "保存设备插件配置失败")
+			}
+		} else {
+			if _, err := tx.Insert(dao.PluginDeviceConfigs.Table(), configData); err != nil {
+				return gerror.Wrap(err, "保存设备插件配置失败")
+			}
+		}
+		if _, err := tx.Insert(dao.PluginDeviceConfigVersions.Table(), do.PluginDeviceConfigVersions{
+			Id:         "pdcv-" + guid.S(),
+			ConfigId:   current.Id,
+			DeviceId:   deviceId,
+			PluginId:   device.PluginId,
+			Version:    nextVersion,
+			ConfigJson: configJSON,
+			ChangeNote: "保存设备插件配置",
+		}); err != nil {
+			return gerror.Wrap(err, "新增设备配置版本失败")
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return emptyAnyMap(config), nil
 }
 
 // Get 返回指定设备。
@@ -218,51 +365,75 @@ func (s *Service) ensureGroup(ctx context.Context, groupId string) error {
 	return nil
 }
 
-func (s *Service) ensurePlugin(ctx context.Context, pluginId string) (*entity.Plugins, error) {
-	var plugin entity.Plugins
-	if err := dao.Plugins.Ctx(ctx).Where(do.Plugins{Id: pluginId}).Scan(&plugin); err != nil {
-		return nil, gerror.Wrapf(err, "读取插件失败: %s", pluginId)
-	}
-	if plugin.Id == "" {
-		return nil, gerror.Newf("插件不存在: %s", pluginId)
-	}
-	if plugin.Enabled != 1 {
-		return nil, gerror.Newf("插件未启用: %s", pluginId)
-	}
-	return &plugin, nil
+func (s *Service) ensurePlugin(ctx context.Context, pluginId string) (*pluginhostsvc.RuntimePlugin, error) {
+	return s.pluginHost.Plugin(ctx, pluginId)
 }
 
-func validateDeviceConfig(pluginId string, config map[string]any) error {
+func (s *Service) buildDeviceItem(ctx context.Context, device entity.Devices) (*runtimev1.DeviceItem, error) {
+	plugin, err := s.ensurePlugin(ctx, device.PluginId)
+	if err != nil {
+		return nil, err
+	}
+	pointCount, err := dao.DevicePoints.Ctx(ctx).Where(do.DevicePoints{DeviceId: device.Id}).Count()
+	if err != nil {
+		return nil, gerror.Wrapf(err, "读取设备点位数量失败: %s", device.Id)
+	}
+	item := s.toDeviceItem(device, plugin.Manifest.Name, pointCount)
+	return &item, nil
+}
+
+func (s *Service) toDeviceItem(device entity.Devices, pluginName string, pointCount int) runtimev1.DeviceItem {
+	return runtimev1.DeviceItem{
+		Id:          device.Id,
+		Name:        device.Name,
+		Code:        device.Code,
+		GroupId:     device.GroupId,
+		PluginId:    device.PluginId,
+		PluginName:  pluginName,
+		Status:      device.Status,
+		Enabled:     device.Enabled == 1,
+		PointCount:  pointCount,
+		ReportMode:  device.ReportMode,
+		LastSeenAt:  displayTime(device.LastSeenAt, "尚未连接"),
+		Description: device.Description,
+	}
+}
+
+func validateConfigBySchema(schema map[string]any, config map[string]any) error {
 	if config == nil {
 		return gerror.New("设备插件配置不能为空")
 	}
-	if pluginId != modbusPluginId {
-		return nil
-	}
-	if strings.TrimSpace(gconv.String(config["host"])) == "" {
-		return gerror.New("Modbus TCP 配置缺少 host")
-	}
-	port := gconv.Int(config["port"])
-	if port < 1 || port > 65535 {
-		return gerror.New("Modbus TCP 端口必须在 1 到 65535 之间")
-	}
-	unitId := gconv.Int(config["unitId"])
-	if unitId < 0 || unitId > 247 {
-		return gerror.New("Modbus TCP unitId 必须在 0 到 247 之间")
-	}
-	if gconv.Int(config["timeoutMs"]) < 100 {
-		return gerror.New("Modbus TCP timeoutMs 不能小于 100")
-	}
-	if gconv.Int(config["pollIntervalMs"]) < 100 {
-		return gerror.New("Modbus TCP pollIntervalMs 不能小于 100")
-	}
-	if gconv.Int(config["maxCoilBatch"]) < 1 || gconv.Int(config["maxCoilBatch"]) > 2000 {
-		return gerror.New("Modbus TCP maxCoilBatch 必须在 1 到 2000 之间")
-	}
-	if gconv.Int(config["maxRegisterBatch"]) < 1 || gconv.Int(config["maxRegisterBatch"]) > 125 {
-		return gerror.New("Modbus TCP maxRegisterBatch 必须在 1 到 125 之间")
+	required, _ := schema["required"].([]any)
+	for _, field := range required {
+		name, ok := field.(string)
+		if !ok || strings.TrimSpace(name) == "" {
+			continue
+		}
+		value, exists := config[name]
+		if !exists || isEmptyConfigValue(value) {
+			return gerror.Newf("设备插件配置缺少必填字段: %s", name)
+		}
 	}
 	return nil
+}
+
+func isEmptyConfigValue(value any) bool {
+	switch item := value.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(item) == ""
+	default:
+		return false
+	}
+}
+
+func marshalConfig(config map[string]any) (string, error) {
+	content, err := json.Marshal(emptyAnyMap(config))
+	if err != nil {
+		return "", gerror.Wrap(err, "序列化设备插件配置失败")
+	}
+	return string(content), nil
 }
 
 func displayTime(value string, empty string) string {
@@ -270,6 +441,13 @@ func displayTime(value string, empty string) string {
 		return empty
 	}
 	return value
+}
+
+func emptyAnyMap(values map[string]any) map[string]any {
+	if values == nil {
+		return map[string]any{}
+	}
+	return values
 }
 
 func boolInt(value bool) int {

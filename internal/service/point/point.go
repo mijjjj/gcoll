@@ -7,7 +7,6 @@ import (
 
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/errors/gerror"
-	"github.com/gogf/gf/v2/util/gconv"
 	"github.com/gogf/gf/v2/util/guid"
 
 	runtimev1 "github.com/mijjjj/gcoll/api/runtime/v1"
@@ -15,8 +14,6 @@ import (
 	"github.com/mijjjj/gcoll/internal/model/do"
 	"github.com/mijjjj/gcoll/internal/model/entity"
 )
-
-const modbusPluginId = "com.gcoll.modbus-tcp"
 
 // Service 提供点位表服务。
 type Service struct{}
@@ -55,9 +52,6 @@ func (s *Service) Create(ctx context.Context, req *runtimev1.CreateDevicePointRe
 	}
 	if device.PluginId != req.PluginId {
 		return nil, gerror.Newf("点位插件与设备插件不一致: %s", req.PluginId)
-	}
-	if err := validatePointMetadata(req.PluginId, req.Metadata); err != nil {
-		return nil, err
 	}
 
 	pointId := strings.TrimSpace(req.Id)
@@ -156,43 +150,6 @@ func toPointItem(point entity.DevicePoints) runtimev1.PointItem {
 		Tags:        stringMapFromJSON(point.TagsJson),
 		Metadata:    anyMapFromJSON(point.MetadataJson),
 	}
-}
-
-func validatePointMetadata(pluginId string, metadata map[string]any) error {
-	if pluginId != modbusPluginId {
-		return nil
-	}
-	if metadata == nil {
-		return gerror.New("Modbus TCP 点位 metadata 不能为空")
-	}
-	area := gconv.String(metadata["area"])
-	switch area {
-	case "coil", "discrete_input", "holding_register", "input_register":
-	default:
-		return gerror.New("Modbus TCP 点位 area 不支持")
-	}
-	mode := gconv.String(metadata["mode"])
-	if mode != "read" && mode != "write" {
-		return gerror.New("Modbus TCP 点位 mode 必须是 read 或 write")
-	}
-	if mode == "write" && (area == "discrete_input" || area == "input_register") {
-		return gerror.New("Modbus TCP 只读区域不能配置写入点位")
-	}
-	if gconv.Int(metadata["quantity"]) < 1 {
-		return gerror.New("Modbus TCP 点位 quantity 必须大于 0")
-	}
-	if strings.TrimSpace(gconv.String(metadata["valueType"])) == "" {
-		return gerror.New("Modbus TCP 点位 metadata 缺少 valueType")
-	}
-	byteOrder := gconv.String(metadata["byteOrder"])
-	if byteOrder != "big" && byteOrder != "little" {
-		return gerror.New("Modbus TCP 点位 byteOrder 必须是 big 或 little")
-	}
-	wordOrder := gconv.String(metadata["wordOrder"])
-	if wordOrder != "big" && wordOrder != "little" {
-		return gerror.New("Modbus TCP 点位 wordOrder 必须是 big 或 little")
-	}
-	return nil
 }
 
 func stringMapFromJSON(raw string) map[string]string {

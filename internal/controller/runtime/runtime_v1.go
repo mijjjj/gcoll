@@ -46,9 +46,19 @@ func (c *ControllerV1) ImportPlugin(ctx context.Context, req *runtimev1.ImportPl
 	return c.runtimeSvc.ImportPlugin(ctx, req.PackagePath)
 }
 
-// ModbusTcpDeviceConfigPage 返回当前设备的 Modbus TCP 协议配置页数据。
-func (c *ControllerV1) ModbusTcpDeviceConfigPage(ctx context.Context, req *runtimev1.ModbusTcpDeviceConfigPageReq) (res *runtimev1.ModbusTcpDeviceConfigPageRes, err error) {
-	return c.runtimeSvc.GetModbusTcpDeviceConfigPage(ctx, req.DeviceId)
+// DevicePluginConfigPage 返回当前设备的插件配置页数据。
+func (c *ControllerV1) DevicePluginConfigPage(ctx context.Context, req *runtimev1.DevicePluginConfigPageReq) (res *runtimev1.DevicePluginConfigPageRes, err error) {
+	return c.runtimeSvc.GetDevicePluginConfigPage(ctx, req.DeviceId)
+}
+
+// UpdateDevicePluginConfig 保存当前设备的插件配置。
+func (c *ControllerV1) UpdateDevicePluginConfig(ctx context.Context, req *runtimev1.UpdateDevicePluginConfigReq) (res *runtimev1.UpdateDevicePluginConfigRes, err error) {
+	return c.runtimeSvc.UpdateDevicePluginConfig(ctx, req)
+}
+
+// TestDevicePluginConnection 测试当前设备的插件连接。
+func (c *ControllerV1) TestDevicePluginConnection(ctx context.Context, req *runtimev1.TestDevicePluginConnectionReq) (res *runtimev1.TestDevicePluginConnectionRes, err error) {
+	return c.runtimeSvc.TestDevicePluginConnection(ctx, req.DeviceId)
 }
 
 // Devices 返回设备列表。
@@ -58,9 +68,24 @@ func (c *ControllerV1) Devices(ctx context.Context, req *runtimev1.DevicesReq) (
 	return c.runtimeSvc.GetDevices(ctx)
 }
 
+// CreateDeviceGroup 新增设备分组。
+func (c *ControllerV1) CreateDeviceGroup(ctx context.Context, req *runtimev1.CreateDeviceGroupReq) (res *runtimev1.CreateDeviceGroupRes, err error) {
+	return c.runtimeSvc.CreateDeviceGroup(ctx, req)
+}
+
 // CreateDevice 新增设备。
 func (c *ControllerV1) CreateDevice(ctx context.Context, req *runtimev1.CreateDeviceReq) (res *runtimev1.CreateDeviceRes, err error) {
 	return c.runtimeSvc.CreateDevice(ctx, req)
+}
+
+// MoveDeviceToGroup 移动设备所属分组。
+func (c *ControllerV1) MoveDeviceToGroup(ctx context.Context, req *runtimev1.MoveDeviceToGroupReq) (res *runtimev1.MoveDeviceToGroupRes, err error) {
+	return c.runtimeSvc.MoveDeviceToGroup(ctx, req)
+}
+
+// DeleteDevice 删除设备。
+func (c *ControllerV1) DeleteDevice(ctx context.Context, req *runtimev1.DeleteDeviceReq) (res *runtimev1.DeleteDeviceRes, err error) {
+	return c.runtimeSvc.DeleteDevice(ctx, req.DeviceId)
 }
 
 // DevicePoints 返回指定设备的点位列表。
@@ -78,6 +103,21 @@ func (c *ControllerV1) Tasks(ctx context.Context, req *runtimev1.TasksReq) (res 
 	_ = req
 
 	return c.runtimeSvc.GetTasks(ctx)
+}
+
+// StartDeviceCollectionTask 启动设备默认采集任务。
+func (c *ControllerV1) StartDeviceCollectionTask(ctx context.Context, req *runtimev1.StartDeviceCollectionTaskReq) (res *runtimev1.CollectionTaskActionRes, err error) {
+	return c.runtimeSvc.StartDeviceCollectionTask(ctx, req.DeviceId)
+}
+
+// StartCollectionTask 启动采集任务。
+func (c *ControllerV1) StartCollectionTask(ctx context.Context, req *runtimev1.StartCollectionTaskReq) (res *runtimev1.CollectionTaskActionRes, err error) {
+	return c.runtimeSvc.StartCollectionTask(ctx, req.TaskId)
+}
+
+// StopCollectionTask 停止采集任务。
+func (c *ControllerV1) StopCollectionTask(ctx context.Context, req *runtimev1.StopCollectionTaskReq) (res *runtimev1.CollectionTaskActionRes, err error) {
+	return c.runtimeSvc.StopCollectionTask(ctx, req.TaskId)
 }
 
 // PointCache 返回最新点位缓存。

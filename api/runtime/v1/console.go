@@ -34,22 +34,49 @@ type ImportPluginRes struct {
 	Plugin PluginItem `json:"plugin"`
 }
 
-// ModbusTcpDeviceConfigPageReq 描述 Modbus TCP 设备协议配置页请求。
-type ModbusTcpDeviceConfigPageReq struct {
+// DevicePluginConfigPageReq 描述设备插件配置页请求。
+type DevicePluginConfigPageReq struct {
 	g.Meta   `path:"/devices/{deviceId}/protocol-config" method:"get" tags:"Devices" summary:"获取设备协议配置页数据"`
 	DeviceId string `json:"deviceId" in:"path"`
 }
 
-// ModbusTcpDeviceConfigPageRes 描述 Modbus TCP 设备协议配置页响应。
-type ModbusTcpDeviceConfigPageRes struct {
-	Plugin     PluginItem            `json:"plugin"`
-	Device     DeviceItem            `json:"device"`
-	Config     ModbusTcpDeviceConfig `json:"config"`
-	ReadPlan   []ModbusTcpReadBlock  `json:"readPlan"`
-	Points     []ModbusTcpPoint      `json:"points"`
-	DebugLogs  []ModbusTcpDebugLog   `json:"debugLogs"`
-	Operations []ModbusTcpOperation  `json:"operations"`
-	Warnings   []string              `json:"warnings"`
+// DevicePluginConfigPageRes 描述设备插件配置页响应。
+type DevicePluginConfigPageRes struct {
+	Plugin       PluginItem        `json:"plugin"`
+	Device       DeviceItem        `json:"device"`
+	Config       map[string]any    `json:"config"`
+	ConfigSchema map[string]any    `json:"configSchema"`
+	Configured   bool              `json:"configured"`
+	Points       []PointItem       `json:"points"`
+	RecentEvents []RuntimeEvent    `json:"recentEvents"`
+	Operations   []PluginOperation `json:"operations"`
+	Warnings     []string          `json:"warnings"`
+}
+
+// UpdateDevicePluginConfigReq 描述保存设备插件配置请求。
+type UpdateDevicePluginConfigReq struct {
+	g.Meta   `path:"/devices/{deviceId}/protocol-config" method:"put" tags:"Devices" summary:"保存设备插件配置"`
+	DeviceId string         `json:"deviceId" in:"path"`
+	Config   map[string]any `json:"config" v:"required#设备插件配置不能为空"`
+}
+
+// UpdateDevicePluginConfigRes 描述保存设备插件配置响应。
+type UpdateDevicePluginConfigRes struct {
+	Config map[string]any `json:"config"`
+}
+
+// TestDevicePluginConnectionReq 描述测试设备插件连接请求。
+type TestDevicePluginConnectionReq struct {
+	g.Meta   `path:"/devices/{deviceId}/protocol-config/test" method:"post" tags:"Devices" summary:"测试设备插件连接"`
+	DeviceId string `json:"deviceId" in:"path"`
+}
+
+// TestDevicePluginConnectionRes 描述测试设备插件连接响应。
+type TestDevicePluginConnectionRes struct {
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+	LatencyMs int    `json:"latencyMs"`
+	TraceId   string `json:"traceId"`
 }
 
 // PluginsRes 描述插件列表响应。
@@ -60,6 +87,18 @@ type PluginsRes struct {
 // DevicesReq 描述设备列表请求。
 type DevicesReq struct {
 	g.Meta `path:"/devices" method:"get" tags:"Devices" summary:"获取设备列表"`
+}
+
+// CreateDeviceGroupReq 描述新增设备分组请求。
+type CreateDeviceGroupReq struct {
+	g.Meta `path:"/device-groups" method:"post" tags:"Devices" summary:"新增设备分组"`
+	Id     string `json:"id"`
+	Name   string `json:"name" v:"required#设备分组名称不能为空"`
+}
+
+// CreateDeviceGroupRes 描述新增设备分组响应。
+type CreateDeviceGroupRes struct {
+	Group DeviceGroup `json:"group"`
 }
 
 // CreateDeviceReq 描述新增设备请求。
@@ -73,12 +112,35 @@ type CreateDeviceReq struct {
 	Enabled     bool           `json:"enabled"`
 	ReportMode  string         `json:"reportMode" v:"required|in:change,all#上报模式不能为空|上报模式只能是 change 或 all"`
 	Description string         `json:"description"`
-	Config      map[string]any `json:"config" v:"required#设备插件配置不能为空"`
+	Config      map[string]any `json:"config"`
 }
 
 // CreateDeviceRes 描述新增设备响应。
 type CreateDeviceRes struct {
 	Device DeviceItem `json:"device"`
+}
+
+// MoveDeviceToGroupReq 描述移动设备所属分组请求。
+type MoveDeviceToGroupReq struct {
+	g.Meta   `path:"/devices/{deviceId}/group" method:"patch" tags:"Devices" summary:"移动设备所属分组"`
+	DeviceId string `json:"deviceId" in:"path"`
+	GroupId  string `json:"groupId" v:"required#目标设备分组不能为空"`
+}
+
+// MoveDeviceToGroupRes 描述移动设备所属分组响应。
+type MoveDeviceToGroupRes struct {
+	Device DeviceItem `json:"device"`
+}
+
+// DeleteDeviceReq 描述删除设备请求。
+type DeleteDeviceReq struct {
+	g.Meta   `path:"/devices/{deviceId}" method:"delete" tags:"Devices" summary:"删除设备"`
+	DeviceId string `json:"deviceId" in:"path"`
+}
+
+// DeleteDeviceRes 描述删除设备响应。
+type DeleteDeviceRes struct {
+	DeviceId string `json:"deviceId"`
 }
 
 // DevicesRes 描述设备列表响应。
@@ -127,6 +189,29 @@ type TasksReq struct {
 // TasksRes 描述采集任务列表响应。
 type TasksRes struct {
 	Items []TaskSummary `json:"items"`
+}
+
+// StartDeviceCollectionTaskReq 描述启动设备默认采集任务请求。
+type StartDeviceCollectionTaskReq struct {
+	g.Meta   `path:"/devices/{deviceId}/tasks/start" method:"post" tags:"Tasks" summary:"启动设备采集任务"`
+	DeviceId string `json:"deviceId" in:"path"`
+}
+
+// StartCollectionTaskReq 描述启动采集任务请求。
+type StartCollectionTaskReq struct {
+	g.Meta `path:"/tasks/{taskId}/start" method:"post" tags:"Tasks" summary:"启动采集任务"`
+	TaskId string `json:"taskId" in:"path"`
+}
+
+// StopCollectionTaskReq 描述停止采集任务请求。
+type StopCollectionTaskReq struct {
+	g.Meta `path:"/tasks/{taskId}/stop" method:"post" tags:"Tasks" summary:"停止采集任务"`
+	TaskId string `json:"taskId" in:"path"`
+}
+
+// CollectionTaskActionRes 描述采集任务启停响应。
+type CollectionTaskActionRes struct {
+	Task TaskSummary `json:"task"`
 }
 
 // PointCacheReq 描述最新点位缓存请求。
@@ -324,64 +409,8 @@ type RuntimeEvent struct {
 	TraceId  string `json:"traceId"`
 }
 
-// ModbusTcpDeviceConfig 描述 Modbus TCP 设备配置。
-type ModbusTcpDeviceConfig struct {
-	Host             string `json:"host"`
-	Port             int    `json:"port"`
-	UnitId           int    `json:"unitId"`
-	TimeoutMs        int    `json:"timeoutMs"`
-	PollIntervalMs   int    `json:"pollIntervalMs"`
-	ReportMode       string `json:"reportMode"`
-	DebugEnabled     bool   `json:"debugEnabled"`
-	MaxCoilBatch     int    `json:"maxCoilBatch"`
-	MaxRegisterBatch int    `json:"maxRegisterBatch"`
-	LowLatencyMs     int    `json:"lowLatencyMs"`
-	HighLatencyMs    int    `json:"highLatencyMs"`
-}
-
-// ModbusTcpReadBlock 描述读取计划中的批量请求。
-type ModbusTcpReadBlock struct {
-	Area      string   `json:"area"`
-	Start     int      `json:"start"`
-	Quantity  int      `json:"quantity"`
-	PointIds  []string `json:"pointIds"`
-	LatencyMs int      `json:"latencyMs"`
-}
-
-// ModbusTcpPoint 描述 Modbus TCP 点位配置。
-type ModbusTcpPoint struct {
-	Id          string `json:"id"`
-	Name        string `json:"name"`
-	Area        string `json:"area"`
-	Address     int    `json:"address"`
-	Quantity    int    `json:"quantity"`
-	ValueType   string `json:"valueType"`
-	Mode        string `json:"mode"`
-	ReportMode  string `json:"reportMode"`
-	Enabled     bool   `json:"enabled"`
-	ByteOrder   string `json:"byteOrder"`
-	WordOrder   string `json:"wordOrder"`
-	Scale       string `json:"scale"`
-	Current     string `json:"current"`
-	Quality     string `json:"quality"`
-	LastReadAt  string `json:"lastReadAt"`
-	Description string `json:"description"`
-}
-
-// ModbusTcpDebugLog 描述 Modbus TCP 调试日志。
-type ModbusTcpDebugLog struct {
-	Time    string `json:"time"`
-	Level   string `json:"level"`
-	Message string `json:"message"`
-	TraceId string `json:"traceId"`
-	Area    string `json:"area"`
-	Address string `json:"address"`
-	CostMs  int    `json:"costMs"`
-	RawHex  string `json:"rawHex"`
-}
-
-// ModbusTcpOperation 描述设备协议配置页可执行动作。
-type ModbusTcpOperation struct {
+// PluginOperation 描述设备插件配置页可执行动作。
+type PluginOperation struct {
 	Key         string `json:"key"`
 	Label       string `json:"label"`
 	Description string `json:"description"`

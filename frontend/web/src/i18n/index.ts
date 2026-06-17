@@ -106,6 +106,9 @@ const messages = {
     'points.do1': '数字量输出1',
     'points.temp': '温度值',
     'points.pressure': '压力值',
+    'api.requestFailed': '请求失败',
+    'api.networkFailed': '网络请求失败，请检查服务状态或稍后重试',
+    'api.responseParseFailed': '响应解析失败',
     'api.runtimeHealthFailed': '运行时健康检查失败',
   },
   en: {
@@ -208,6 +211,9 @@ const messages = {
     'points.do1': 'Digital output 1',
     'points.temp': 'Temperature',
     'points.pressure': 'Pressure',
+    'api.requestFailed': 'Request failed',
+    'api.networkFailed': 'Network request failed. Check the service status and try again later.',
+    'api.responseParseFailed': 'Failed to parse response payload',
     'api.runtimeHealthFailed': 'Runtime health check failed',
   },
 } as Record<AppLanguage, Record<string, string>>
@@ -224,12 +230,16 @@ export function getCurrentLanguage(): AppLanguage {
   return normalizeLanguage(localStorage.getItem(storageKey))
 }
 
+export function translate(key: string, language: AppLanguage = getCurrentLanguage()): string {
+  return messages[language][key] ?? messages[defaultLanguage][key] ?? key
+}
+
 export const useLocaleStore = defineStore('locale', {
   state: () => ({
     language: getCurrentLanguage(),
   }),
   getters: {
-    t: (state) => (key: string) => messages[state.language][key] ?? messages[defaultLanguage][key] ?? key,
+    t: (state) => (key: string) => translate(key, state.language),
   },
   actions: {
     setLanguage(language: AppLanguage) {

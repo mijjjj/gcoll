@@ -1,6 +1,9 @@
 package modbustcp
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // Runtime 提供宿主调用 Modbus TCP 插件的入口。
 type Runtime struct {
@@ -40,6 +43,27 @@ func (r *Runtime) ValidateConfig(config ConnectionConfig, points []Point) error 
 		}
 	}
 	return nil
+}
+
+// TestConnection 从宿主读取配置后执行一次 TCP 连接测试。
+func (r *Runtime) TestConnection(deviceID string) (time.Duration, error) {
+	if r.host == nil {
+		return 0, fmt.Errorf("宿主客户端未配置")
+	}
+	config, err := r.host.LoadDeviceConfig(deviceID)
+	if err != nil {
+		return 0, err
+	}
+	client, err := NewTCPClient(config)
+	if err != nil {
+		return 0, err
+	}
+	started := time.Now()
+	if err := client.Connect(); err != nil {
+		return time.Since(started), err
+	}
+	defer client.Close()
+	return time.Since(started), nil
 }
 
 // ReadOnce 从宿主读取配置和点位后执行一次采集。

@@ -11,3 +11,7 @@ database:
   default:
     link: "sqlite::@file(manifest/data/gcoll.db)"
     debug: true
+
+pluginHost:
+  mode: "development"
+  autoCompile: true

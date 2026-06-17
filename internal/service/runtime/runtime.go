@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/os/gtime"
 	"github.com/gogf/gf/v2/util/gconv"
+	"github.com/gogf/gf/v2/util/guid"
 
 	runtimev1 "github.com/mijjjj/gcoll/api/runtime/v1"
 	"github.com/mijjjj/gcoll/internal/consts"
@@ -17,25 +17,26 @@ import (
 	"github.com/mijjjj/gcoll/internal/model/do"
 	"github.com/mijjjj/gcoll/internal/model/entity"
 	devicesvc "github.com/mijjjj/gcoll/internal/service/device"
+	pluginhostsvc "github.com/mijjjj/gcoll/internal/service/pluginhost"
 	pluginmgmtsvc "github.com/mijjjj/gcoll/internal/service/pluginmgmt"
 	pointsvc "github.com/mijjjj/gcoll/internal/service/point"
 )
 
-const modbusPluginId = "com.gcoll.modbus-tcp"
-
 // Service 提供运行时相关服务。
 type Service struct {
-	pluginSvc *pluginmgmtsvc.Service
-	deviceSvc *devicesvc.Service
-	pointSvc  *pointsvc.Service
+	pluginSvc     *pluginmgmtsvc.Service
+	deviceSvc     *devicesvc.Service
+	pointSvc      *pointsvc.Service
+	pluginHostSvc *pluginhostsvc.Service
 }
 
 // New 创建运行时服务。
 func New() *Service {
 	return &Service{
-		pluginSvc: pluginmgmtsvc.New(),
-		deviceSvc: devicesvc.New(),
-		pointSvc:  pointsvc.New(),
+		pluginSvc:     pluginmgmtsvc.New(),
+		deviceSvc:     devicesvc.New(),
+		pointSvc:      pointsvc.New(),
+		pluginHostSvc: pluginhostsvc.Instance(),
 	}
 }
 
@@ -91,7 +92,7 @@ func (s *Service) GetOverview(ctx context.Context) (*runtimev1.OverviewRes, erro
 		Metrics: []runtimev1.MetricItem{
 			{Key: "runtime", Label: "运行时", Value: "运行中", Hint: "本机服务", Tone: "primary"},
 			{Key: "devices", Label: "运行设备", Value: gconv.String(onlineCount), Hint: "共 " + gconv.String(len(devices.Items)) + " 台设备", Tone: "success"},
-			{Key: "points", Label: "启用点位", Value: gconv.String(len(points.Items)), Hint: "最新缓存 " + gconv.String(len(points.Items)) + " 条", Tone: "primary"},
+			{Key: "points", Label: "缓存点位", Value: gconv.String(len(points.Items)), Hint: "最新点位缓存", Tone: "primary"},
 			{Key: "plugins", Label: "插件进程", Value: gconv.String(runningCount) + "/" + gconv.String(len(plugins.Items)), Hint: "本地插件模式", Tone: "warning"},
 		},
 		Runtime: runtimev1.RuntimeStatus{
@@ -104,11 +105,11 @@ func (s *Service) GetOverview(ctx context.Context) (*runtimev1.OverviewRes, erro
 			Database:  "SQLite 开发模式",
 		},
 		DataPlane: runtimev1.DataPlaneStatus{
-			QueueUsagePercent: 18,
-			RuleHitPercent:    72,
-			ForwardPercent:    64,
-			Throughput:        "128 条/秒",
-			Latency:           "42 ms",
+			QueueUsagePercent: 0,
+			RuleHitPercent:    0,
+			ForwardPercent:    0,
+			Throughput:        "等待插件上报",
+			Latency:           "未采集",
 			Backpressure:      "正常",
 		},
 		Tasks:        tasks.Items,
@@ -125,7 +126,7 @@ func (s *Service) GetOverview(ctx context.Context) (*runtimev1.OverviewRes, erro
 	}, nil
 }
 
-// GetPlugins 返回数据库中的插件列表。
+// GetPlugins 返回内存插件列表。
 func (s *Service) GetPlugins(ctx context.Context) (*runtimev1.PluginsRes, error) {
 	items, err := s.pluginSvc.List(ctx)
 	if err != nil {
@@ -148,6 +149,15 @@ func (s *Service) GetDevices(ctx context.Context) (*runtimev1.DevicesRes, error)
 	return s.deviceSvc.List(ctx)
 }
 
+// CreateDeviceGroup 新增设备分组。
+func (s *Service) CreateDeviceGroup(ctx context.Context, req *runtimev1.CreateDeviceGroupReq) (*runtimev1.CreateDeviceGroupRes, error) {
+	group, err := s.deviceSvc.CreateGroup(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &runtimev1.CreateDeviceGroupRes{Group: *group}, nil
+}
+
 // CreateDevice 新增设备和设备插件配置。
 func (s *Service) CreateDevice(ctx context.Context, req *runtimev1.CreateDeviceReq) (*runtimev1.CreateDeviceRes, error) {
 	item, err := s.deviceSvc.Create(ctx, req)
@@ -155,6 +165,116 @@ func (s *Service) CreateDevice(ctx context.Context, req *runtimev1.CreateDeviceR
 		return nil, err
 	}
 	return &runtimev1.CreateDeviceRes{Device: *item}, nil
+}
+
+// MoveDeviceToGroup 移动设备所属分组。
+func (s *Service) MoveDeviceToGroup(ctx context.Context, req *runtimev1.MoveDeviceToGroupReq) (*runtimev1.MoveDeviceToGroupRes, error) {
+	item, err := s.deviceSvc.MoveToGroup(ctx, req.DeviceId, req.GroupId)
+	if err != nil {
+		return nil, err
+	}
+	return &runtimev1.MoveDeviceToGroupRes{Device: *item}, nil
+}
+
+// DeleteDevice 删除设备及其控制面关联数据。
+func (s *Service) DeleteDevice(ctx context.Context, deviceId string) (*runtimev1.DeleteDeviceRes, error) {
+	if err := s.deviceSvc.Delete(ctx, deviceId); err != nil {
+		return nil, err
+	}
+	return &runtimev1.DeleteDeviceRes{DeviceId: deviceId}, nil
+}
+
+// GetDevicePluginConfigPage 返回指定设备的通用插件配置页数据。
+func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string) (*runtimev1.DevicePluginConfigPageRes, error) {
+	device, err := s.deviceSvc.Get(ctx, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	plugin, err := s.pluginHostSvc.Plugin(ctx, device.PluginId)
+	if err != nil {
+		return nil, err
+	}
+	points, err := s.GetDevicePoints(ctx, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	config, configured, err := s.deviceConfig(ctx, deviceId, device.PluginId)
+	if err != nil {
+		return nil, err
+	}
+	events, err := s.recentDeviceEvents(ctx, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	return &runtimev1.DevicePluginConfigPageRes{
+		Plugin: runtimev1.PluginItem{
+			Id:          plugin.Manifest.Id,
+			Name:        plugin.Manifest.Name,
+			Type:        plugin.Manifest.Type,
+			Version:     plugin.Manifest.Version,
+			Runtime:     plugin.Manifest.Runtime,
+			Protocol:    plugin.Manifest.Protocol,
+			Status:      plugin.Status,
+			Permissions: plugin.Manifest.Permissions,
+			UpdatedAt:   plugin.UpdatedAt,
+		},
+		Device: runtimev1.DeviceItem{
+			Id:          device.Id,
+			Name:        device.Name,
+			Code:        device.Code,
+			GroupId:     device.GroupId,
+			PluginId:    device.PluginId,
+			PluginName:  plugin.Manifest.Name,
+			Status:      device.Status,
+			Enabled:     device.Enabled == 1,
+			PointCount:  len(points.Items),
+			ReportMode:  device.ReportMode,
+			LastSeenAt:  displayTime(device.LastSeenAt, "尚未连接"),
+			Description: device.Description,
+		},
+		Config:       config,
+		ConfigSchema: emptyAnyMap(plugin.Manifest.ConfigSchema),
+		Configured:   configured,
+		Points:       points.Items,
+		RecentEvents: events,
+		Operations: []runtimev1.PluginOperation{
+			{Key: "saveConfig", Label: "保存配置", Description: "保存当前设备的插件运行配置。", Enabled: true},
+			{Key: "test", Label: "测试连接", Description: "通过南向插件 gRPC 服务测试连接。", Enabled: configured},
+			{Key: "startTask", Label: "启动采集", Description: "启动设备采集任务并等待插件上报。", Enabled: configured && len(points.Items) > 0},
+		},
+		Warnings: []string{
+			"设备配置和点位扩展由插件解释，宿主只保存通用 JSON 结构。",
+			"采集明细不落库，插件只能通过标准 gRPC 服务向宿主提交记录。",
+		},
+	}, nil
+}
+
+// UpdateDevicePluginConfig 保存指定设备的通用插件配置。
+func (s *Service) UpdateDevicePluginConfig(ctx context.Context, req *runtimev1.UpdateDevicePluginConfigReq) (*runtimev1.UpdateDevicePluginConfigRes, error) {
+	config, err := s.deviceSvc.SavePluginConfig(ctx, req.DeviceId, req.Config)
+	if err != nil {
+		return nil, err
+	}
+	return &runtimev1.UpdateDevicePluginConfigRes{Config: config}, nil
+}
+
+// TestDevicePluginConnection 测试指定设备的插件连接。
+func (s *Service) TestDevicePluginConnection(ctx context.Context, deviceId string) (*runtimev1.TestDevicePluginConnectionRes, error) {
+	result, err := s.pluginHostSvc.TestConnection(ctx, deviceId)
+	if result == nil {
+		return nil, err
+	}
+	res := &runtimev1.TestDevicePluginConnectionRes{
+		Success:   result.Success,
+		Message:   result.Message,
+		LatencyMs: result.LatencyMs,
+		TraceId:   result.TraceID,
+	}
+	if err != nil {
+		return res, err
+	}
+	return res, nil
 }
 
 // GetDevicePoints 返回指定设备的通用点位表。
@@ -176,7 +296,6 @@ func (s *Service) GetTasks(ctx context.Context) (*runtimev1.TasksRes, error) {
 	var (
 		tasks   []entity.CollectionTasks
 		devices []entity.Devices
-		plugins []entity.Plugins
 		points  []entity.DevicePoints
 	)
 	if err := dao.CollectionTasks.Ctx(ctx).OrderDesc(dao.CollectionTasks.Columns().UpdatedAt).Scan(&tasks); err != nil {
@@ -184,9 +303,6 @@ func (s *Service) GetTasks(ctx context.Context) (*runtimev1.TasksRes, error) {
 	}
 	if err := dao.Devices.Ctx(ctx).Scan(&devices); err != nil {
 		return nil, gerror.Wrap(err, "读取任务设备失败")
-	}
-	if err := dao.Plugins.Ctx(ctx).Scan(&plugins); err != nil {
-		return nil, gerror.Wrap(err, "读取任务插件失败")
 	}
 	if err := dao.DevicePoints.Ctx(ctx).Scan(&points); err != nil {
 		return nil, gerror.Wrap(err, "读取任务点位数量失败")
@@ -196,9 +312,9 @@ func (s *Service) GetTasks(ctx context.Context) (*runtimev1.TasksRes, error) {
 	for _, device := range devices {
 		deviceNames[device.Id] = device.Name
 	}
-	pluginNames := map[string]string{}
-	for _, plugin := range plugins {
-		pluginNames[plugin.Id] = plugin.Name
+	pluginNames, err := s.pluginHostSvc.PluginNameMap(ctx)
+	if err != nil {
+		return nil, err
 	}
 	pointCounts := map[string]int{}
 	for _, point := range points {
@@ -224,18 +340,54 @@ func (s *Service) GetTasks(ctx context.Context) (*runtimev1.TasksRes, error) {
 	return &runtimev1.TasksRes{Items: items}, nil
 }
 
+// StartDeviceCollectionTask 启动设备默认采集任务，缺失任务时创建控制面任务。
+func (s *Service) StartDeviceCollectionTask(ctx context.Context, deviceId string) (*runtimev1.CollectionTaskActionRes, error) {
+	task, err := s.ensureDeviceTask(ctx, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	return s.StartCollectionTask(ctx, task.Id)
+}
+
+// StartCollectionTask 启动指定采集任务。
+func (s *Service) StartCollectionTask(ctx context.Context, taskId string) (*runtimev1.CollectionTaskActionRes, error) {
+	if err := s.pluginHostSvc.StartTask(ctx, taskId); err != nil {
+		return nil, err
+	}
+	return s.taskActionResult(ctx, taskId)
+}
+
+// StopCollectionTask 停止指定采集任务。
+func (s *Service) StopCollectionTask(ctx context.Context, taskId string) (*runtimev1.CollectionTaskActionRes, error) {
+	if err := s.pluginHostSvc.StopTask(ctx, taskId); err != nil {
+		return nil, err
+	}
+	return s.taskActionResult(ctx, taskId)
+}
+
 // GetPointCache 返回最新点位缓存。
 func (s *Service) GetPointCache(ctx context.Context) *runtimev1.PointCacheRes {
 	_ = ctx
-
-	return &runtimev1.PointCacheRes{
-		Items: []runtimev1.PointCacheItem{
-			{PointId: "pt-temperature", DeviceId: "dev-edge-gw-a01", PointName: "TEMP_01", Value: "25.6 ℃", Quality: "good", Changed: true, UpdatedAt: "2026-06-16 10:30:18.123"},
-			{PointId: "pt-pressure", DeviceId: "dev-edge-gw-a01", PointName: "PRESS_01", Value: "101.3 kPa", Quality: "good", Changed: false, UpdatedAt: "2026-06-16 10:30:18.120"},
-			{PointId: "pt-motor-state", DeviceId: "dev-edge-gw-a01", PointName: "MOTOR_RUN", Value: "ON", Quality: "good", Changed: true, UpdatedAt: "2026-06-16 10:30:18.118"},
-			{PointId: "pt-energy", DeviceId: "dev-edge-gw-a01", PointName: "ENERGY_TOTAL", Value: "1288.4 kWh", Quality: "uncertain", Changed: false, UpdatedAt: "2026-06-16 10:30:18.110"},
-		},
+	latest := s.pluginHostSvc.LatestValues()
+	items := make([]runtimev1.PointCacheItem, 0, len(latest))
+	for _, item := range latest {
+		items = append(items, runtimev1.PointCacheItem{
+			PointId:   item.PointID,
+			DeviceId:  item.DeviceID,
+			PointName: item.PointName,
+			Value:     item.Value,
+			Quality:   item.Quality,
+			Changed:   item.Changed,
+			UpdatedAt: item.UpdatedAt,
+		})
 	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].DeviceId != items[j].DeviceId {
+			return items[i].DeviceId < items[j].DeviceId
+		}
+		return items[i].PointId < items[j].PointId
+	})
+	return &runtimev1.PointCacheRes{Items: items}
 }
 
 // GetPipelineRules 返回规则过滤列表。
@@ -244,8 +396,8 @@ func (s *Service) GetPipelineRules(ctx context.Context) *runtimev1.PipelineRules
 
 	return &runtimev1.PipelineRulesRes{
 		Items: []runtimev1.PipelineRuleItem{
-			{Id: "rule-good-quality", Name: "仅转发良好质量数据", Enabled: true, Expression: "quality == \"good\"", Matched: 1860, TargetCount: 1, UpdatedAt: "2026-06-15 09:20:00"},
-			{Id: "rule-change-only", Name: "变化值进入北向链路", Enabled: true, Expression: "report_mode == \"change\" && changed == true", Matched: 940, TargetCount: 1, UpdatedAt: "2026-06-15 09:22:00"},
+			{Id: "rule-good-quality", Name: "仅转发良好质量数据", Enabled: true, Expression: "quality == \"good\"", Matched: 0, TargetCount: 0, UpdatedAt: "尚未启用"},
+			{Id: "rule-change-only", Name: "变化值进入北向链路", Enabled: true, Expression: "report_mode == \"change\" && changed == true", Matched: 0, TargetCount: 0, UpdatedAt: "尚未启用"},
 		},
 	}
 }
@@ -255,10 +407,7 @@ func (s *Service) GetTargets(ctx context.Context) *runtimev1.TargetsRes {
 	_ = ctx
 
 	return &runtimev1.TargetsRes{
-		Items: []runtimev1.ForwardTargetItem{
-			{Id: "target-http-demo", Name: "演示 HTTP 接收端", PluginName: "HTTP 北向转发", Status: "running", Endpoint: "https://example.internal/ingest", UpdatedAt: "2026-06-15 09:28:00"},
-			{Id: "target-http-standby", Name: "备用 HTTP 接收端", PluginName: "HTTP 北向转发", Status: "stopped", Endpoint: "https://backup.example.internal/ingest", LastError: "未启用", UpdatedAt: "2026-06-15 08:50:00"},
-		},
+		Items: []runtimev1.ForwardTargetItem{},
 	}
 }
 
@@ -268,6 +417,99 @@ func (s *Service) GetLogs(ctx context.Context) (*runtimev1.LogsRes, error) {
 	if err := dao.RuntimeEvents.Ctx(ctx).OrderDesc(dao.RuntimeEvents.Columns().Time).Limit(50).Scan(&events); err != nil {
 		return nil, gerror.Wrap(err, "读取运行事件失败")
 	}
+	return &runtimev1.LogsRes{Items: runtimeEvents(events)}, nil
+}
+
+func (s *Service) ensureDeviceTask(ctx context.Context, deviceId string) (*entity.CollectionTasks, error) {
+	device, err := s.deviceSvc.Get(ctx, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	var task entity.CollectionTasks
+	if err := dao.CollectionTasks.Ctx(ctx).Where(do.CollectionTasks{
+		DeviceId:      deviceId,
+		SouthPluginId: device.PluginId,
+	}).OrderAsc(dao.CollectionTasks.Columns().CreatedAt).Scan(&task); err != nil {
+		return nil, gerror.Wrapf(err, "读取设备采集任务失败: %s", deviceId)
+	}
+	if task.Id != "" {
+		return &task, nil
+	}
+	plugin, err := s.pluginHostSvc.Plugin(ctx, device.PluginId)
+	if err != nil {
+		return nil, err
+	}
+	task = entity.CollectionTasks{
+		Id:            "task-" + guid.S(),
+		Name:          device.Name + " 采集任务",
+		DeviceId:      device.Id,
+		SouthPluginId: device.PluginId,
+		ReportMode:    device.ReportMode,
+		Status:        "stopped",
+		RuleHitRate:   "0%",
+		Rate:          "0 条/秒",
+	}
+	if _, err := dao.CollectionTasks.Ctx(ctx).Data(do.CollectionTasks{
+		Id:            task.Id,
+		Name:          task.Name,
+		DeviceId:      task.DeviceId,
+		SouthPluginId: task.SouthPluginId,
+		ReportMode:    task.ReportMode,
+		Status:        task.Status,
+		RuleHitRate:   task.RuleHitRate,
+		Rate:          task.Rate,
+	}).Insert(); err != nil {
+		return nil, gerror.Wrapf(err, "创建设备采集任务失败: %s", deviceId)
+	}
+	_ = plugin
+	return &task, nil
+}
+
+func (s *Service) taskActionResult(ctx context.Context, taskId string) (*runtimev1.CollectionTaskActionRes, error) {
+	tasks, err := s.GetTasks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, task := range tasks.Items {
+		if task.Id == taskId {
+			return &runtimev1.CollectionTaskActionRes{Task: task}, nil
+		}
+	}
+	return nil, gerror.Newf("采集任务不存在: %s", taskId)
+}
+
+func (s *Service) deviceConfig(ctx context.Context, deviceId string, pluginId string) (map[string]any, bool, error) {
+	var config entity.PluginDeviceConfigs
+	if err := dao.PluginDeviceConfigs.Ctx(ctx).Where(do.PluginDeviceConfigs{
+		DeviceId: deviceId,
+		PluginId: pluginId,
+		Active:   1,
+	}).Scan(&config); err != nil {
+		return nil, false, gerror.Wrapf(err, "读取设备插件配置失败: %s", deviceId)
+	}
+	if config.Id == "" || strings.TrimSpace(config.ConfigJson) == "" {
+		return map[string]any{}, false, nil
+	}
+	values := map[string]any{}
+	if err := json.Unmarshal([]byte(config.ConfigJson), &values); err != nil {
+		return nil, false, gerror.Wrapf(err, "解析设备插件配置失败: %s", deviceId)
+	}
+	return values, true, nil
+}
+
+func (s *Service) recentDeviceEvents(ctx context.Context, deviceId string) ([]runtimev1.RuntimeEvent, error) {
+	var events []entity.RuntimeEvents
+	if err := dao.RuntimeEvents.Ctx(ctx).
+		Where(do.RuntimeEvents{DeviceId: deviceId}).
+		OrderDesc(dao.RuntimeEvents.Columns().Time).
+		Limit(20).
+		Scan(&events); err != nil {
+		return nil, gerror.Wrapf(err, "读取设备运行事件失败: %s", deviceId)
+	}
+	return runtimeEvents(events), nil
+}
+
+func runtimeEvents(events []entity.RuntimeEvents) []runtimev1.RuntimeEvent {
 	items := make([]runtimev1.RuntimeEvent, 0, len(events))
 	for _, event := range events {
 		items = append(items, runtimev1.RuntimeEvent{
@@ -282,311 +524,7 @@ func (s *Service) GetLogs(ctx context.Context) (*runtimev1.LogsRes, error) {
 			TraceId:  event.TraceId,
 		})
 	}
-	return &runtimev1.LogsRes{Items: items}, nil
-}
-
-// GetModbusTcpDeviceConfigPage 返回指定设备的 Modbus TCP 协议配置页数据。
-func (s *Service) GetModbusTcpDeviceConfigPage(ctx context.Context, deviceId string) (*runtimev1.ModbusTcpDeviceConfigPageRes, error) {
-	device, err := s.deviceSvc.Get(ctx, deviceId)
-	if err != nil {
-		return nil, err
-	}
-	if device.PluginId != modbusPluginId {
-		return nil, gerror.Newf("设备未使用 Modbus TCP 插件: %s", deviceId)
-	}
-
-	plugin, err := s.pluginById(ctx, modbusPluginId)
-	if err != nil {
-		return nil, err
-	}
-	modbusConfig, err := s.modbusConfig(ctx, deviceId)
-	if err != nil {
-		return nil, err
-	}
-	points, err := s.modbusPoints(ctx, deviceId, device.ReportMode)
-	if err != nil {
-		return nil, err
-	}
-	readPlan := buildReadPlan(points)
-	debugLogs, err := s.modbusDebugLogs(ctx, deviceId)
-	if err != nil {
-		return nil, err
-	}
-
-	return &runtimev1.ModbusTcpDeviceConfigPageRes{
-		Plugin: runtimev1.PluginItem{
-			Id:          plugin.Id,
-			Name:        plugin.Name,
-			Type:        plugin.Type,
-			Version:     plugin.ActiveVersion,
-			Runtime:     plugin.Runtime,
-			Protocol:    plugin.Protocol,
-			Status:      plugin.Status,
-			Permissions: []string{"network.outbound", "config.read", "runtime.events"},
-			UpdatedAt:   plugin.UpdatedAt,
-		},
-		Device: runtimev1.DeviceItem{
-			Id:          device.Id,
-			Name:        device.Name,
-			Code:        device.Code,
-			GroupId:     device.GroupId,
-			PluginId:    device.PluginId,
-			PluginName:  plugin.Name,
-			Status:      device.Status,
-			Enabled:     device.Enabled == 1,
-			PointCount:  len(points),
-			ReportMode:  device.ReportMode,
-			LastSeenAt:  displayTime(device.LastSeenAt, "尚未连接"),
-			Description: device.Description,
-		},
-		Config:    *modbusConfig,
-		ReadPlan:  readPlan,
-		Points:    points,
-		DebugLogs: debugLogs,
-		Operations: []runtimev1.ModbusTcpOperation{
-			{Key: "test", Label: "测试连接", Description: "建立 TCP 连接并执行一次轻量读取。", Enabled: true},
-			{Key: "readOnce", Label: "读取一次", Description: "按当前点位表执行一次读取并输出调试日志。", Enabled: true},
-			{Key: "toggleDebug", Label: "调试模式", Description: "采集请求、响应耗时和原始报文摘要。", Enabled: true},
-			{Key: "writePoint", Label: "写入点位", Description: "仅允许写入线圈和保持寄存器点位。", Enabled: true},
-		},
-		Warnings: []string{
-			"采集明细不落库，调试日志只保存最近窗口并由宿主统一收集。",
-			"离散输入和输入寄存器为只读区域，不能配置写入模式。",
-		},
-	}, nil
-}
-
-func (s *Service) pluginById(ctx context.Context, pluginId string) (*entity.Plugins, error) {
-	var plugin entity.Plugins
-	if err := dao.Plugins.Ctx(ctx).Where(do.Plugins{Id: pluginId}).Scan(&plugin); err != nil {
-		return nil, gerror.Wrapf(err, "读取插件失败: %s", pluginId)
-	}
-	if plugin.Id == "" {
-		return nil, gerror.Newf("插件不存在: %s", pluginId)
-	}
-	return &plugin, nil
-}
-
-func (s *Service) modbusConfig(ctx context.Context, deviceId string) (*runtimev1.ModbusTcpDeviceConfig, error) {
-	var config entity.ModbusTcpDeviceProfiles
-	if err := dao.ModbusTcpDeviceProfiles.Ctx(ctx).Where(do.ModbusTcpDeviceProfiles{
-		DeviceId: deviceId,
-		PluginId: modbusPluginId,
-	}).Scan(&config); err != nil {
-		return nil, gerror.Wrapf(err, "读取 Modbus TCP 设备配置失败: %s", deviceId)
-	}
-	if config.Id == "" {
-		return nil, gerror.Newf("设备缺少 Modbus TCP 配置: %s", deviceId)
-	}
-	return &runtimev1.ModbusTcpDeviceConfig{
-		Host:             config.Host,
-		Port:             config.Port,
-		UnitId:           config.UnitId,
-		TimeoutMs:        config.TimeoutMs,
-		PollIntervalMs:   config.PollIntervalMs,
-		ReportMode:       config.ReportMode,
-		DebugEnabled:     config.DebugEnabled == 1,
-		MaxCoilBatch:     config.MaxCoilBatch,
-		MaxRegisterBatch: config.MaxRegisterBatch,
-		LowLatencyMs:     config.LowLatencyMs,
-		HighLatencyMs:    config.HighLatencyMs,
-	}, nil
-}
-
-func (s *Service) modbusPoints(ctx context.Context, deviceId string, reportMode string) ([]runtimev1.ModbusTcpPoint, error) {
-	var points []entity.DevicePoints
-	if err := dao.DevicePoints.Ctx(ctx).Where(do.DevicePoints{DeviceId: deviceId, PluginId: modbusPluginId}).Scan(&points); err != nil {
-		return nil, gerror.Wrapf(err, "读取设备点位失败: %s", deviceId)
-	}
-	items := make([]runtimev1.ModbusTcpPoint, 0, len(points))
-	for _, point := range points {
-		item, err := toModbusPoint(point, reportMode)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	sort.Slice(items, func(i, j int) bool {
-		if areaOrder(items[i].Area) != areaOrder(items[j].Area) {
-			return areaOrder(items[i].Area) < areaOrder(items[j].Area)
-		}
-		if items[i].Address != items[j].Address {
-			return items[i].Address < items[j].Address
-		}
-		return items[i].Id < items[j].Id
-	})
-	return items, nil
-}
-
-func toModbusPoint(point entity.DevicePoints, reportMode string) (runtimev1.ModbusTcpPoint, error) {
-	metadata, err := modbusMetadata(point)
-	if err != nil {
-		return runtimev1.ModbusTcpPoint{}, err
-	}
-	area := gconv.String(metadata["area"])
-	address, err := modbusAddress(point.Address, area, metadata)
-	if err != nil {
-		return runtimev1.ModbusTcpPoint{}, err
-	}
-	pointReportMode := gconv.String(metadata["reportMode"])
-	if pointReportMode == "" {
-		pointReportMode = reportMode
-	}
-	return runtimev1.ModbusTcpPoint{
-		Id:          point.Id,
-		Name:        point.Name,
-		Area:        area,
-		Address:     address,
-		Quantity:    gconv.Int(metadata["quantity"]),
-		ValueType:   modbusValueType(point, metadata),
-		Mode:        gconv.String(metadata["mode"]),
-		ReportMode:  pointReportMode,
-		Enabled:     point.Enabled == 1,
-		ByteOrder:   gconv.String(metadata["byteOrder"]),
-		WordOrder:   gconv.String(metadata["wordOrder"]),
-		Scale:       modbusMetadataString(metadata, "scale", "1"),
-		Current:     currentValue(point.Id),
-		Quality:     currentQuality(point.Id),
-		LastReadAt:  currentTime(point.Id),
-		Description: point.Description,
-	}, nil
-}
-
-func modbusMetadata(point entity.DevicePoints) (map[string]any, error) {
-	metadata := map[string]any{}
-	if strings.TrimSpace(point.MetadataJson) == "" {
-		return nil, gerror.Newf("Modbus TCP 点位缺少 metadata: %s", point.Id)
-	}
-	if err := json.Unmarshal([]byte(point.MetadataJson), &metadata); err != nil {
-		return nil, gerror.Wrapf(err, "解析 Modbus TCP 点位 metadata 失败: %s", point.Id)
-	}
-	if gconv.String(metadata["area"]) == "" {
-		return nil, gerror.Newf("Modbus TCP 点位 metadata 缺少 area: %s", point.Id)
-	}
-	if gconv.String(metadata["mode"]) == "" {
-		return nil, gerror.Newf("Modbus TCP 点位 metadata 缺少 mode: %s", point.Id)
-	}
-	if gconv.Int(metadata["quantity"]) < 1 {
-		return nil, gerror.Newf("Modbus TCP 点位 metadata 的 quantity 无效: %s", point.Id)
-	}
-	return metadata, nil
-}
-
-func modbusAddress(raw string, area string, metadata map[string]any) (int, error) {
-	if value := strings.TrimSpace(gconv.String(metadata["address"])); value != "" {
-		address := gconv.Int(value)
-		if address < 0 {
-			return 0, gerror.New("Modbus TCP 点位地址不能小于 0")
-		}
-		return address, nil
-	}
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return 0, gerror.New("Modbus TCP 点位地址不能为空")
-	}
-	hasPrefix := strings.Contains(value, ":")
-	if hasPrefix {
-		parts := strings.SplitN(value, ":", 2)
-		value = strings.TrimSpace(parts[1])
-	}
-	address, err := strconv.Atoi(value)
-	if err != nil {
-		return 0, gerror.Wrapf(err, "解析 Modbus TCP 点位地址失败: %s", raw)
-	}
-	if hasPrefix {
-		if base := modbusDisplayAddressBase(area); base > 0 && address >= base {
-			address -= base
-		}
-	}
-	if address < 0 {
-		return 0, gerror.Newf("Modbus TCP 点位地址不能小于 0: %s", raw)
-	}
-	return address, nil
-}
-
-func modbusDisplayAddressBase(area string) int {
-	switch area {
-	case "coil":
-		return 1
-	case "discrete_input":
-		return 10001
-	case "input_register":
-		return 30001
-	case "holding_register":
-		return 40001
-	default:
-		return 0
-	}
-}
-
-func modbusValueType(point entity.DevicePoints, metadata map[string]any) string {
-	if value := strings.TrimSpace(gconv.String(metadata["valueType"])); value != "" {
-		return value
-	}
-	return point.ValueType
-}
-
-func modbusMetadataString(metadata map[string]any, key string, fallback string) string {
-	if value := strings.TrimSpace(gconv.String(metadata[key])); value != "" {
-		return value
-	}
-	return fallback
-}
-
-func buildReadPlan(points []runtimev1.ModbusTcpPoint) []runtimev1.ModbusTcpReadBlock {
-	blocks := make([]runtimev1.ModbusTcpReadBlock, 0, len(points))
-	for _, point := range points {
-		if !point.Enabled || point.Mode != "read" {
-			continue
-		}
-		blocks = append(blocks, runtimev1.ModbusTcpReadBlock{
-			Area:     point.Area,
-			Start:    point.Address,
-			Quantity: point.Quantity,
-			PointIds: []string{point.Id},
-		})
-	}
-	return blocks
-}
-
-func (s *Service) modbusDebugLogs(ctx context.Context, deviceId string) ([]runtimev1.ModbusTcpDebugLog, error) {
-	var logs []entity.ModbusTcpDebugLogs
-	if err := dao.ModbusTcpDebugLogs.Ctx(ctx).
-		Where(do.ModbusTcpDebugLogs{DeviceId: deviceId}).
-		OrderDesc(dao.ModbusTcpDebugLogs.Columns().CreatedAt).
-		Limit(20).
-		Scan(&logs); err != nil {
-		return nil, gerror.Wrapf(err, "读取 Modbus TCP 调试日志失败: %s", deviceId)
-	}
-	items := make([]runtimev1.ModbusTcpDebugLog, 0, len(logs))
-	for _, log := range logs {
-		items = append(items, runtimev1.ModbusTcpDebugLog{
-			Time:    log.CreatedAt,
-			Level:   log.Level,
-			Message: log.Message,
-			TraceId: log.TraceId,
-			Area:    log.Area,
-			Address: gconv.String(log.Address),
-			CostMs:  log.LatencyMs,
-			RawHex:  log.RawHex,
-		})
-	}
-	return items, nil
-}
-
-func areaOrder(area string) int {
-	switch area {
-	case "coil":
-		return 1
-	case "discrete_input":
-		return 2
-	case "holding_register":
-		return 3
-	case "input_register":
-		return 4
-	default:
-		return 99
-	}
+	return items
 }
 
 func displayTime(value string, empty string) string {
@@ -596,36 +534,9 @@ func displayTime(value string, empty string) string {
 	return value
 }
 
-func currentValue(pointId string) string {
-	values := map[string]string{
-		"pt-temperature": "25.6 ℃",
-		"pt-pressure":    "101.3 kPa",
-		"pt-motor-state": "ON",
-		"pt-energy":      "1288.4 kWh",
-		"pt-speed-set":   "960 rpm",
-		"pt-emergency":   "OFF",
+func emptyAnyMap(values map[string]any) map[string]any {
+	if values == nil {
+		return map[string]any{}
 	}
-	return values[pointId]
-}
-
-func currentQuality(pointId string) string {
-	if pointId == "pt-energy" {
-		return "uncertain"
-	}
-	if currentValue(pointId) == "" {
-		return ""
-	}
-	return "good"
-}
-
-func currentTime(pointId string) string {
-	times := map[string]string{
-		"pt-temperature": "2026-06-16 10:30:18.123",
-		"pt-pressure":    "2026-06-16 10:30:18.120",
-		"pt-motor-state": "2026-06-16 10:30:18.118",
-		"pt-energy":      "2026-06-16 10:30:18.110",
-		"pt-speed-set":   "2026-06-16 10:29:55.010",
-		"pt-emergency":   "2026-06-16 10:30:18.106",
-	}
-	return times[pointId]
+	return values
 }

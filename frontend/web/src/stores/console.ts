@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
+import { translate } from '../i18n'
 import {
   consoleApi,
+  type DevicePluginConfigPage,
   type DeviceGroup,
   type DeviceItem,
   type ForwardTargetItem,
-  type ModbusTcpDeviceConfigPage,
   type OverviewData,
   type PipelineRuleItem,
   type PluginItem,
@@ -12,6 +13,7 @@ import {
   type PointItem,
   type RuntimeEvent,
   type TaskSummary,
+  type TestConnectionResult,
 } from '../api/console'
 
 interface ConsoleState {
@@ -26,7 +28,7 @@ interface ConsoleState {
   pipelineRules: PipelineRuleItem[]
   targets: ForwardTargetItem[]
   logs: RuntimeEvent[]
-  modbusTcpDeviceConfigPage: ModbusTcpDeviceConfigPage | null
+  devicePluginConfigPage: DevicePluginConfigPage | null
   loading: boolean
   error: string
 }
@@ -44,7 +46,7 @@ export const useConsoleStore = defineStore('console', {
     pipelineRules: [],
     targets: [],
     logs: [],
-    modbusTcpDeviceConfigPage: null,
+    devicePluginConfigPage: null,
     loading: false,
     error: '',
   }),
@@ -64,10 +66,44 @@ export const useConsoleStore = defineStore('console', {
         const result = await consoleApi.getDevices()
         this.deviceGroups = result.groups
         this.devices = result.items
-        if (!this.selectedDeviceId && result.items.length > 0) {
-          this.selectedDeviceId = result.items[0].id
+        const selectedExists = result.items.some((device) => device.id === this.selectedDeviceId)
+        if (!selectedExists) {
+          this.selectedDeviceId = result.items[0]?.id ?? ''
         }
         await this.fetchSelectedDeviceDetails()
+      })
+    },
+    async createDeviceGroup(payload: { name: string }) {
+      await this.run(async () => {
+        await consoleApi.createDeviceGroup(payload)
+        await this.loadDevices()
+      })
+    },
+    async createDevice(payload: { name: string; code: string; groupId: string; pluginId: string; description: string }) {
+      await this.run(async () => {
+        const result = await consoleApi.createDevice({
+          ...payload,
+          enabled: false,
+          reportMode: 'change',
+        })
+        this.selectedDeviceId = result.device.id
+        await this.loadDevices()
+      })
+    },
+    async moveDeviceToGroup(deviceId: string, groupId: string) {
+      await this.run(async () => {
+        await consoleApi.moveDeviceToGroup(deviceId, groupId)
+        this.selectedDeviceId = deviceId
+        await this.loadDevices()
+      })
+    },
+    async deleteDevice(deviceId: string) {
+      await this.run(async () => {
+        await consoleApi.deleteDevice(deviceId)
+        if (this.selectedDeviceId === deviceId) {
+          this.selectedDeviceId = ''
+        }
+        await this.loadDevices()
       })
     },
     async loadPointsForSelectedDevice() {
@@ -94,22 +130,82 @@ export const useConsoleStore = defineStore('console', {
         this.plugins = (await consoleApi.getPlugins()).items
       })
     },
-    async loadModbusTcpDeviceConfigPage() {
+    async loadDevicePluginConfigPage() {
       await this.run(async () => {
-        await this.fetchModbusTcpDeviceConfigPage()
+        await this.fetchDevicePluginConfigPage()
+      })
+    },
+    async saveDevicePluginConfig(config: Record<string, unknown>) {
+      if (!this.selectedDeviceId) return
+      await this.run(async () => {
+        await consoleApi.updateDevicePluginConfig(this.selectedDeviceId, config)
+        await this.fetchSelectedDeviceDetails()
+      })
+    },
+    async testDevicePluginConnection(): Promise<TestConnectionResult | null> {
+      if (!this.selectedDeviceId) return null
+      let result: TestConnectionResult | null = null
+      await this.run(async () => {
+        result = await consoleApi.testDevicePluginConnection(this.selectedDeviceId)
+        await this.fetchDevicePluginConfigPage()
+      })
+      return result
+    },
+    async startSelectedDeviceTask() {
+      if (!this.selectedDeviceId) return
+      await this.run(async () => {
+        await consoleApi.startDeviceTask(this.selectedDeviceId)
+        await this.loadTasks()
+        await this.fetchSelectedDeviceDetails()
+      })
+    },
+    async createPoint(payload: { name: string; description: string; address: string; valueType: string; unit: string; metadata: Record<string, unknown> }) {
+      if (!this.selectedDeviceId) return
+      const device = this.devices.find((item) => item.id === this.selectedDeviceId)
+      if (!device) return
+      await this.run(async () => {
+        await consoleApi.createDevicePoint(this.selectedDeviceId, {
+          pluginId: device.pluginId,
+          name: payload.name,
+          description: payload.description,
+          address: payload.address,
+          valueType: payload.valueType,
+          unit: payload.unit,
+          enabled: true,
+          tags: {},
+          metadata: payload.metadata,
+        })
+        await this.fetchSelectedDeviceDetails()
+      })
+    },
+    async startTask(taskId: string) {
+      await this.run(async () => {
+        await consoleApi.startTask(taskId)
+        await this.loadTasks()
+      })
+    },
+    async stopTask(taskId: string) {
+      await this.run(async () => {
+        await consoleApi.stopTask(taskId)
+        await this.loadTasks()
       })
     },
     async fetchSelectedDeviceDetails() {
-      await this.loadPointsForSelectedDevice()
-      await this.fetchModbusTcpDeviceConfigPage()
-    },
-    async fetchModbusTcpDeviceConfigPage() {
-      const device = this.devices.find((item) => item.id === this.selectedDeviceId)
-      if (!device || device.pluginId !== 'com.gcoll.modbus-tcp') {
-        this.modbusTcpDeviceConfigPage = null
+      if (!this.selectedDeviceId) {
+        this.points = []
+        this.devicePluginConfigPage = null
         return
       }
-      this.modbusTcpDeviceConfigPage = await consoleApi.getModbusTcpDeviceConfigPage(device.id)
+      await this.loadPointsForSelectedDevice()
+      await this.fetchDevicePluginConfigPage()
+    },
+    async fetchDevicePluginConfigPage() {
+      const device = this.devices.find((item) => item.id === this.selectedDeviceId)
+      if (!device) {
+        this.devicePluginConfigPage = null
+        return
+      }
+      this.devicePluginConfigPage = await consoleApi.getDevicePluginConfigPage(device.id)
     },
     async loadTasks() {
       await this.run(async () => {
@@ -142,7 +238,7 @@ export const useConsoleStore = defineStore('console', {
       try {
         await action()
       } catch (error) {
-        this.error = error instanceof Error ? error.message : '请求失败'
+        this.error = error instanceof Error ? error.message : translate('api.requestFailed')
       } finally {
         this.loading = false
       }

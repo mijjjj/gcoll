@@ -6,7 +6,10 @@ version: 0.1.0
 runtime: process
 protocol: grpc
 entry:
-  windows-amd64: bin/modbus-tcp-plugin.exe
+  windows-amd64: bin/windows-amd64/modbus-tcp-plugin.exe
+  linux-amd64: bin/linux-amd64/modbus-tcp-plugin
+  darwin-amd64: bin/darwin-amd64/modbus-tcp-plugin
+  darwin-arm64: bin/darwin-arm64/modbus-tcp-plugin
 capabilities:
   - southbound.collector.modbus_tcp
   - southbound.writer.modbus_tcp
