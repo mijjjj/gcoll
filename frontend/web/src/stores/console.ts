@@ -148,11 +148,11 @@ export const useConsoleStore = defineStore('console', {
         await this.fetchSelectedDeviceDetails()
       })
     },
-    async testDevicePluginConnection(): Promise<TestConnectionResult | null> {
+    async testDevicePluginConnection(config?: Record<string, unknown>): Promise<TestConnectionResult | null> {
       if (!this.selectedDeviceId) return null
       let result: TestConnectionResult | null = null
       await this.run(async () => {
-        result = await consoleApi.testDevicePluginConnection(this.selectedDeviceId)
+        result = await consoleApi.testDevicePluginConnection(this.selectedDeviceId, config)
         await this.fetchDevicePluginConfigPage()
       })
       return result

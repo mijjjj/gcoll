@@ -2,7 +2,9 @@ package runtime
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 
@@ -218,6 +220,7 @@ func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string
 	if err != nil {
 		return nil, err
 	}
+	configSchema := emptyAnyMap(plugin.Manifest.ConfigSchema)
 	events, err := s.recentDeviceEvents(ctx, deviceId)
 	if err != nil {
 		return nil, err
@@ -257,8 +260,8 @@ func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string
 			LastSeenAt:  displayTime(device.LastSeenAt, "尚未连接"),
 			Description: device.Description,
 		},
-		Config:       config,
-		ConfigSchema: emptyAnyMap(plugin.Manifest.ConfigSchema),
+		Config:       mergeConfigDefaults(configSchema, config),
+		ConfigSchema: configSchema,
 		CustomConfigPage: commonv1.PluginCustomConfigPage{
 			Enabled: configPage.Enabled,
 			Entry:   configPage.Entry,
@@ -298,8 +301,8 @@ func (s *Service) UpdateDevicePluginConfig(ctx context.Context, req *devicev1.Up
 }
 
 // TestDevicePluginConnection 测试指定设备的插件连接。
-func (s *Service) TestDevicePluginConnection(ctx context.Context, deviceId string) (*devicev1.TestDevicePluginConnectionRes, error) {
-	result, err := s.pluginHostSvc.TestConnection(ctx, deviceId)
+func (s *Service) TestDevicePluginConnection(ctx context.Context, req *devicev1.TestDevicePluginConnectionReq) (*devicev1.TestDevicePluginConnectionRes, error) {
+	result, err := s.pluginHostSvc.TestConnection(ctx, req.DeviceId, req.Config)
 	if result == nil {
 		return nil, err
 	}
@@ -532,7 +535,9 @@ func (s *Service) deviceConfig(ctx context.Context, deviceId string, pluginId st
 		PluginId: pluginId,
 		Active:   1,
 	}).Scan(&config); err != nil {
-		return nil, false, gerror.Wrapf(err, "读取设备插件配置失败: %s", deviceId)
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, false, gerror.Wrapf(err, "读取设备插件配置失败: %s", deviceId)
+		}
 	}
 	if config.Id == "" || strings.TrimSpace(config.ConfigJson) == "" {
 		return map[string]any{}, false, nil
@@ -586,4 +591,24 @@ func emptyAnyMap(values map[string]any) map[string]any {
 		return map[string]any{}
 	}
 	return values
+}
+
+func mergeConfigDefaults(schema map[string]any, config map[string]any) map[string]any {
+	result := schemaDefaultConfig(schema)
+	for key, value := range emptyAnyMap(config) {
+		result[key] = value
+	}
+	return result
+}
+
+func schemaDefaultConfig(schema map[string]any) map[string]any {
+	result := map[string]any{}
+	properties, _ := schema["properties"].(map[string]any)
+	for name, rawProperty := range properties {
+		property, _ := rawProperty.(map[string]any)
+		if defaultValue, exists := property["default"]; exists {
+			result[name] = defaultValue
+		}
+	}
+	return result
 }

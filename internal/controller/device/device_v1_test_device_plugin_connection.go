@@ -7,5 +7,5 @@ import (
 )
 
 func (c *ControllerV1) TestDevicePluginConnection(ctx context.Context, req *v1.TestDevicePluginConnectionReq) (res *v1.TestDevicePluginConnectionRes, err error) {
-	return c.runtimeSvc.TestDevicePluginConnection(ctx, req.DeviceId)
+	return c.runtimeSvc.TestDevicePluginConnection(ctx, req)
 }

@@ -3,7 +3,9 @@ package pluginhost
 import (
 	"archive/zip"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -29,6 +31,7 @@ import (
 	"github.com/mijjjj/gcoll/internal/dao"
 	"github.com/mijjjj/gcoll/internal/model/do"
 	"github.com/mijjjj/gcoll/internal/model/entity"
+	modbustcp "github.com/mijjjj/gcoll/plugins/com.gcoll.modbus-tcp/runtime"
 )
 
 const (
@@ -334,19 +337,30 @@ func (s *Service) ImportPackage(ctx context.Context, packagePath string) (*commo
 }
 
 // TestConnection 通过通用南向插件连接测试入口发起测试。
-func (s *Service) TestConnection(ctx context.Context, deviceID string) (*TestConnectionResult, error) {
+func (s *Service) TestConnection(ctx context.Context, deviceID string, config map[string]any) (*TestConnectionResult, error) {
 	start := time.Now()
 	traceID := "trace-" + guid.S()
-	device, config, err := s.deviceRuntimeConfig(ctx, deviceID)
+	device, storedConfig, err := s.deviceAndConfig(ctx, deviceID)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.ensurePluginStarted(ctx, device.PluginId); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(config.ConfigJson) == "" {
-		return nil, gerror.Newf("设备缺少插件运行配置: %s", deviceID)
+
+	testConfig, err := s.testConnectionConfig(ctx, device, storedConfig, config)
+	if err != nil {
+		return nil, err
 	}
+
+	if device.PluginId == modbustcp.PluginID {
+		result, testErr := s.testModbusConnection(ctx, deviceID, device.PluginId, testConfig, traceID)
+		if testErr != nil {
+			return result, testErr
+		}
+		return result, nil
+	}
+
 	message := "插件 gRPC TestConnection 尚未接入，宿主已完成设备配置和插件进程检查。"
 	result := &TestConnectionResult{
 		Success:   false,
@@ -356,6 +370,77 @@ func (s *Service) TestConnection(ctx context.Context, deviceID string) (*TestCon
 	}
 	_ = s.appendRuntimeEvent(ctx, "WARN", "pluginhost", device.PluginId, deviceID, "", message, traceID)
 	return result, gerror.New(message)
+}
+
+func (s *Service) testConnectionConfig(ctx context.Context, device *entity.Devices, storedConfig *entity.PluginDeviceConfigs, draftConfig map[string]any) (map[string]any, error) {
+	if len(draftConfig) > 0 {
+		if err := s.ValidateRuntimeConfig(ctx, device.PluginId, draftConfig, nil); err != nil {
+			return nil, err
+		}
+		return draftConfig, nil
+	}
+	if storedConfig == nil || strings.TrimSpace(storedConfig.ConfigJson) == "" {
+		return nil, gerror.Newf("设备缺少插件运行配置: %s", device.Id)
+	}
+	values := map[string]any{}
+	if err := json.Unmarshal([]byte(storedConfig.ConfigJson), &values); err != nil {
+		return nil, gerror.Wrapf(err, "解析设备插件配置失败: %s", device.Id)
+	}
+	if err := s.ValidateRuntimeConfig(ctx, device.PluginId, values, nil); err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+func (s *Service) testModbusConnection(ctx context.Context, deviceID string, pluginID string, config map[string]any, traceID string) (*TestConnectionResult, error) {
+	connectionConfig, err := modbusConnectionConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	client, err := modbustcp.NewTCPClient(connectionConfig)
+	if err != nil {
+		return nil, err
+	}
+	connectStartedAt := time.Now()
+	if err := client.Connect(); err != nil {
+		latency := int(time.Since(connectStartedAt).Milliseconds())
+		message := "Modbus TCP 连接测试失败: " + err.Error()
+		result := &TestConnectionResult{
+			Success:   false,
+			Message:   message,
+			LatencyMs: latency,
+			TraceID:   traceID,
+		}
+		_ = s.appendRuntimeEvent(ctx, "WARN", "pluginhost", pluginID, deviceID, "", message, traceID)
+		return result, gerror.New(message)
+	}
+	defer client.Close()
+
+	latency := int(time.Since(connectStartedAt).Milliseconds())
+	message := "Modbus TCP 连接测试成功。"
+	result := &TestConnectionResult{
+		Success:   true,
+		Message:   message,
+		LatencyMs: latency,
+		TraceID:   traceID,
+	}
+	_ = s.appendRuntimeEvent(ctx, "INFO", "pluginhost", pluginID, deviceID, "", message, traceID)
+	return result, nil
+}
+
+func modbusConnectionConfig(config map[string]any) (modbustcp.ConnectionConfig, error) {
+	content, err := json.Marshal(config)
+	if err != nil {
+		return modbustcp.ConnectionConfig{}, gerror.Wrap(err, "序列化 Modbus TCP 测试配置失败")
+	}
+	var connectionConfig modbustcp.ConnectionConfig
+	if err := json.Unmarshal(content, &connectionConfig); err != nil {
+		return modbustcp.ConnectionConfig{}, gerror.Wrap(err, "解析 Modbus TCP 测试配置失败")
+	}
+	if err := connectionConfig.Validate(); err != nil {
+		return modbustcp.ConnectionConfig{}, gerror.Wrap(err, "校验 Modbus TCP 测试配置失败")
+	}
+	return connectionConfig.Normalize(), nil
 }
 
 // StartTask 启动采集任务控制面状态，实际采集必须由南向插件通过 gRPC 完成。
@@ -1098,18 +1183,7 @@ func (s *Service) waitTaskCancel(ctx context.Context, taskID string) {
 	s.mu.Unlock()
 }
 
-func (s *Service) task(ctx context.Context, taskID string) (*entity.CollectionTasks, error) {
-	var task entity.CollectionTasks
-	if err := dao.CollectionTasks.Ctx(ctx).Where(do.CollectionTasks{Id: taskID}).Scan(&task); err != nil {
-		return nil, gerror.Wrapf(err, "读取采集任务失败: %s", taskID)
-	}
-	if task.Id == "" {
-		return nil, gerror.Newf("采集任务不存在: %s", taskID)
-	}
-	return &task, nil
-}
-
-func (s *Service) deviceRuntimeConfig(ctx context.Context, deviceID string) (*entity.Devices, *entity.PluginDeviceConfigs, error) {
+func (s *Service) deviceAndConfig(ctx context.Context, deviceID string) (*entity.Devices, *entity.PluginDeviceConfigs, error) {
 	var device entity.Devices
 	if err := dao.Devices.Ctx(ctx).Where(do.Devices{Id: deviceID}).Scan(&device); err != nil {
 		return nil, nil, gerror.Wrapf(err, "读取设备失败: %s", deviceID)
@@ -1123,12 +1197,36 @@ func (s *Service) deviceRuntimeConfig(ctx context.Context, deviceID string) (*en
 		PluginId: device.PluginId,
 		Active:   1,
 	}).Scan(&config); err != nil {
-		return nil, nil, gerror.Wrapf(err, "读取设备插件配置失败: %s", deviceID)
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, gerror.Wrapf(err, "读取设备插件配置失败: %s", deviceID)
+		}
 	}
 	if config.Id == "" {
-		return nil, nil, gerror.Newf("设备缺少插件运行配置: %s", deviceID)
+		return &device, nil, nil
 	}
 	return &device, &config, nil
+}
+
+func (s *Service) task(ctx context.Context, taskID string) (*entity.CollectionTasks, error) {
+	var task entity.CollectionTasks
+	if err := dao.CollectionTasks.Ctx(ctx).Where(do.CollectionTasks{Id: taskID}).Scan(&task); err != nil {
+		return nil, gerror.Wrapf(err, "读取采集任务失败: %s", taskID)
+	}
+	if task.Id == "" {
+		return nil, gerror.Newf("采集任务不存在: %s", taskID)
+	}
+	return &task, nil
+}
+
+func (s *Service) deviceRuntimeConfig(ctx context.Context, deviceID string) (*entity.Devices, *entity.PluginDeviceConfigs, error) {
+	device, config, err := s.deviceAndConfig(ctx, deviceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if config == nil || strings.TrimSpace(config.ConfigJson) == "" {
+		return nil, nil, gerror.Newf("设备缺少插件运行配置: %s", deviceID)
+	}
+	return device, config, nil
 }
 
 func (s *Service) ensureDeviceRunnable(ctx context.Context, deviceID string) error {

@@ -2,7 +2,15 @@ module github.com/mijjjj/gcoll
 
 go 1.25.5
 
-require github.com/gogf/gf/v2 v2.10.2
+require (
+	github.com/gogf/gf/v2 v2.10.2
+	github.com/mijjjj/gcoll/plugins/com.gcoll.modbus-tcp v0.0.0
+)
+
+require (
+	github.com/goburrow/modbus v0.1.0 // indirect
+	github.com/goburrow/serial v0.1.0 // indirect
+)
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect
@@ -43,3 +51,5 @@ require (
 	modernc.org/memory v1.5.0 // indirect
 	modernc.org/sqlite v1.23.1 // indirect
 )
+
+replace github.com/mijjjj/gcoll/plugins/com.gcoll.modbus-tcp => ./plugins/com.gcoll.modbus-tcp

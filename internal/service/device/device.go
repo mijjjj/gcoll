@@ -2,7 +2,9 @@ package device
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/gogf/gf/v2/database/gdb"
@@ -162,9 +164,8 @@ func (s *Service) Create(ctx context.Context, req *devicev1.CreateDeviceReq) (*c
 		return nil, err
 	}
 
-	if err := dao.Devices.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		_ = ctx
-		if _, err := tx.Insert(dao.Devices.Table(), do.Devices{
+	if err := dao.Devices.Transaction(ctx, func(ctx context.Context, _ gdb.TX) error {
+		if _, err := dao.Devices.Ctx(ctx).Data(do.Devices{
 			Id:          deviceId,
 			Name:        req.Name,
 			Code:        req.Code,
@@ -174,25 +175,25 @@ func (s *Service) Create(ctx context.Context, req *devicev1.CreateDeviceReq) (*c
 			Enabled:     boolInt(req.Enabled),
 			ReportMode:  req.ReportMode,
 			Description: req.Description,
-		}); err != nil {
+		}).Insert(); err != nil {
 			return gerror.Wrap(err, "新增设备失败")
+		}
+		if _, err := dao.PluginDeviceConfigs.Ctx(ctx).Data(do.PluginDeviceConfigs{
+			Id:         configId,
+			DeviceId:   deviceId,
+			PluginId:   req.PluginId,
+			Version:    initialConfigVersion(hasConfig),
+			ConfigJson: initialConfigJSON(hasConfig, configJSON),
+			ReportMode: req.ReportMode,
+			Enabled:    boolInt(req.Enabled),
+			Active:     1,
+		}).Insert(); err != nil {
+			return gerror.Wrap(err, "新增设备插件配置失败")
 		}
 		if !hasConfig {
 			return nil
 		}
-		if _, err := tx.Insert(dao.PluginDeviceConfigs.Table(), do.PluginDeviceConfigs{
-			Id:         configId,
-			DeviceId:   deviceId,
-			PluginId:   req.PluginId,
-			Version:    1,
-			ConfigJson: configJSON,
-			ReportMode: req.ReportMode,
-			Enabled:    boolInt(req.Enabled),
-			Active:     1,
-		}); err != nil {
-			return gerror.Wrap(err, "新增设备插件配置失败")
-		}
-		if _, err := tx.Insert(dao.PluginDeviceConfigVersions.Table(), do.PluginDeviceConfigVersions{
+		if _, err := dao.PluginDeviceConfigVersions.Ctx(ctx).Data(do.PluginDeviceConfigVersions{
 			Id:         configVersionId,
 			ConfigId:   configId,
 			DeviceId:   deviceId,
@@ -200,7 +201,7 @@ func (s *Service) Create(ctx context.Context, req *devicev1.CreateDeviceReq) (*c
 			Version:    1,
 			ConfigJson: configJSON,
 			ChangeNote: "初始化设备插件配置",
-		}); err != nil {
+		}).Insert(); err != nil {
 			return gerror.Wrap(err, "新增设备配置版本失败")
 		}
 		return nil
@@ -265,22 +266,34 @@ func (s *Service) Delete(ctx context.Context, deviceID string) error {
 	}
 
 	if err := dao.Devices.Transaction(ctx, func(ctx context.Context, _ gdb.TX) error {
-		if _, err := dao.PluginDeviceConfigVersions.Ctx(ctx).Where(do.PluginDeviceConfigVersions{DeviceId: deviceID}).Delete(); err != nil {
+		if _, err := dao.PluginDeviceConfigVersions.Ctx(ctx).
+			Where(dao.PluginDeviceConfigVersions.Columns().DeviceId, deviceID).
+			Delete(); err != nil {
 			return gerror.Wrap(err, "删除设备插件配置版本失败")
 		}
-		if _, err := dao.PluginDeviceConfigs.Ctx(ctx).Where(do.PluginDeviceConfigs{DeviceId: deviceID}).Delete(); err != nil {
+		if _, err := dao.PluginDeviceConfigs.Ctx(ctx).
+			Where(dao.PluginDeviceConfigs.Columns().DeviceId, deviceID).
+			Delete(); err != nil {
 			return gerror.Wrap(err, "删除设备插件配置失败")
 		}
-		if _, err := dao.DevicePointVersions.Ctx(ctx).Where(do.DevicePointVersions{DeviceId: deviceID}).Delete(); err != nil {
+		if _, err := dao.DevicePointVersions.Ctx(ctx).
+			Where(dao.DevicePointVersions.Columns().DeviceId, deviceID).
+			Delete(); err != nil {
 			return gerror.Wrap(err, "删除设备点位版本失败")
 		}
-		if _, err := dao.DevicePoints.Ctx(ctx).Where(do.DevicePoints{DeviceId: deviceID}).Delete(); err != nil {
+		if _, err := dao.DevicePoints.Ctx(ctx).
+			Where(dao.DevicePoints.Columns().DeviceId, deviceID).
+			Delete(); err != nil {
 			return gerror.Wrap(err, "删除设备点位失败")
 		}
-		if _, err := dao.CollectionTasks.Ctx(ctx).Where(do.CollectionTasks{DeviceId: deviceID}).Delete(); err != nil {
+		if _, err := dao.CollectionTasks.Ctx(ctx).
+			Where(dao.CollectionTasks.Columns().DeviceId, deviceID).
+			Delete(); err != nil {
 			return gerror.Wrap(err, "删除设备采集任务失败")
 		}
-		if _, err := dao.Devices.Ctx(ctx).Where(do.Devices{Id: deviceID}).Delete(); err != nil {
+		if _, err := dao.Devices.Ctx(ctx).
+			Where(dao.Devices.Columns().Id, deviceID).
+			Delete(); err != nil {
 			return gerror.Wrap(err, "删除设备失败")
 		}
 		return nil
@@ -318,7 +331,9 @@ func (s *Service) SavePluginConfig(ctx context.Context, deviceId string, config 
 		PluginId: device.PluginId,
 		Active:   1,
 	}).Scan(&current); err != nil {
-		return nil, gerror.Wrapf(err, "读取设备插件配置失败: %s", deviceId)
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, gerror.Wrapf(err, "读取设备插件配置失败: %s", deviceId)
+		}
 	}
 	nextVersion := current.Version + 1
 	currentExists := current.Id != ""
@@ -327,8 +342,7 @@ func (s *Service) SavePluginConfig(ctx context.Context, deviceId string, config 
 		nextVersion = 1
 	}
 
-	if err := dao.Devices.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		_ = ctx
+	if err := dao.Devices.Transaction(ctx, func(ctx context.Context, _ gdb.TX) error {
 		configData := do.PluginDeviceConfigs{
 			Id:         current.Id,
 			DeviceId:   deviceId,
@@ -340,15 +354,18 @@ func (s *Service) SavePluginConfig(ctx context.Context, deviceId string, config 
 			Active:     1,
 		}
 		if currentExists {
-			if _, err := tx.Update(dao.PluginDeviceConfigs.Table(), configData, do.PluginDeviceConfigs{Id: current.Id}); err != nil {
+			if _, err := dao.PluginDeviceConfigs.Ctx(ctx).
+				Where(do.PluginDeviceConfigs{Id: current.Id}).
+				Data(configData).
+				Update(); err != nil {
 				return gerror.Wrap(err, "保存设备插件配置失败")
 			}
 		} else {
-			if _, err := tx.Insert(dao.PluginDeviceConfigs.Table(), configData); err != nil {
+			if _, err := dao.PluginDeviceConfigs.Ctx(ctx).Data(configData).Insert(); err != nil {
 				return gerror.Wrap(err, "保存设备插件配置失败")
 			}
 		}
-		if _, err := tx.Insert(dao.PluginDeviceConfigVersions.Table(), do.PluginDeviceConfigVersions{
+		if _, err := dao.PluginDeviceConfigVersions.Ctx(ctx).Data(do.PluginDeviceConfigVersions{
 			Id:         "pdcv-" + guid.S(),
 			ConfigId:   current.Id,
 			DeviceId:   deviceId,
@@ -356,7 +373,7 @@ func (s *Service) SavePluginConfig(ctx context.Context, deviceId string, config 
 			Version:    nextVersion,
 			ConfigJson: configJSON,
 			ChangeNote: "保存设备插件配置",
-		}); err != nil {
+		}).Insert(); err != nil {
 			return gerror.Wrap(err, "新增设备配置版本失败")
 		}
 		return nil
@@ -456,6 +473,20 @@ func marshalConfig(config map[string]any) (string, error) {
 		return "", gerror.Wrap(err, "序列化设备插件配置失败")
 	}
 	return string(content), nil
+}
+
+func initialConfigVersion(hasConfig bool) int {
+	if hasConfig {
+		return 1
+	}
+	return 0
+}
+
+func initialConfigJSON(hasConfig bool, configJSON string) string {
+	if hasConfig {
+		return configJSON
+	}
+	return ""
 }
 
 func displayTime(value string, empty string) string {

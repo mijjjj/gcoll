@@ -220,9 +220,10 @@ export const consoleApi = {
       method: 'PUT',
       body: JSON.stringify({ config }),
     }),
-  testDevicePluginConnection: (deviceId: string) =>
+  testDevicePluginConnection: (deviceId: string, config?: Record<string, unknown>) =>
     request<TestConnectionResult>(`/devices/${deviceId}/protocol-config/test`, {
       method: 'POST',
+      body: JSON.stringify({ config }),
     }),
   getDevicePoints: (deviceId: string) => request<{ items: PointItem[] }>(`/devices/${deviceId}/points`),
   createDevicePoint: (deviceId: string, payload: Partial<PointItem> & { pluginId: string; name: string; address: string; valueType: string; metadata?: Record<string, unknown> }) =>

@@ -162,16 +162,16 @@ func applyMigration(ctx context.Context, db gdb.DB, version string, file string)
 	if sqlText == "" {
 		return gerror.Newf("数据库迁移文件为空: %s", file)
 	}
-	return db.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+	return db.Transaction(ctx, func(ctx context.Context, _ gdb.TX) error {
 		for _, statement := range splitStatements(sqlText) {
 			if !hasExecutableSQL(statement) {
 				continue
 			}
-			if _, err := tx.Exec(statement); err != nil {
+			if _, err := db.Exec(ctx, statement); err != nil {
 				return gerror.Wrapf(err, "执行数据库迁移失败: %s", version)
 			}
 		}
-		if _, err := tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", version); err != nil {
+		if _, err := db.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES (?)", version); err != nil {
 			return gerror.Wrapf(err, "写入数据库迁移记录失败: %s", version)
 		}
 		return nil

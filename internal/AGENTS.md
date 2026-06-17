@@ -29,6 +29,10 @@
 - 错误应保留上下文；日志字段、配置键、协议字段保持英文。
 - 高频路径不得逐条同步写库，不无限制创建 goroutine。
 - 缺失必需配置、密钥、插件或设备资源时直接返回明确错误，不隐式选择默认资源。
+- 数据访问以 `internal/dao` 作为模型入口；读取结果使用 `internal/model/entity`，写入、更新与条件写回优先使用 `internal/model/do`。
+- 不使用 `map` 作为常规写入结构；优先使用 GoFrame `do` 结构，让空值字段保持 `nil` 并由 ORM 自动忽略。
+- 事务必须通过 GoFrame `Transaction` 包裹；事务回调内统一通过传入的 `ctx` 继续调用 `dao.*.Ctx(ctx)` 或 `db.Ctx(ctx)`，不要直接调用 `tx.Insert`、`tx.Update`、`tx.Delete`、`tx.Exec`。
+- GoFrame 已提供等效能力时，优先使用 GoFrame 的工具库、组件和辅助方法。
 
 ## 验证
 

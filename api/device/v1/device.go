@@ -42,7 +42,8 @@ type UpdateDevicePluginConfigRes struct {
 // TestDevicePluginConnectionReq 描述测试设备插件连接请求。
 type TestDevicePluginConnectionReq struct {
 	g.Meta   `path:"/devices/{deviceId}/protocol-config/test" method:"post" tags:"Devices" summary:"测试设备插件连接"`
-	DeviceId string `json:"deviceId" in:"path"`
+	DeviceId string         `json:"deviceId" in:"path"`
+	Config   map[string]any `json:"config"`
 }
 
 // TestDevicePluginConnectionRes 描述测试设备插件连接响应。

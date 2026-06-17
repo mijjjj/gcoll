@@ -2,7 +2,9 @@ package point
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/gogf/gf/v2/database/gdb"
@@ -105,9 +107,8 @@ func (s *Service) Create(ctx context.Context, req *devicev1.CreateDevicePointReq
 		return nil, err
 	}
 
-	if err := dao.DevicePoints.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		_ = ctx
-		if _, err := tx.Insert(dao.DevicePoints.Table(), do.DevicePoints{
+	if err := dao.DevicePoints.Transaction(ctx, func(ctx context.Context, _ gdb.TX) error {
+		if _, err := dao.DevicePoints.Ctx(ctx).Data(do.DevicePoints{
 			Id:           pointId,
 			DeviceId:     req.DeviceId,
 			PluginId:     req.PluginId,
@@ -119,10 +120,10 @@ func (s *Service) Create(ctx context.Context, req *devicev1.CreateDevicePointReq
 			Enabled:      boolInt(req.Enabled),
 			TagsJson:     string(tagsJSON),
 			MetadataJson: string(metadataJSON),
-		}); err != nil {
+		}).Insert(); err != nil {
 			return gerror.Wrap(err, "新增设备点位失败")
 		}
-		if _, err := tx.Insert(dao.DevicePointVersions.Table(), do.DevicePointVersions{
+		if _, err := dao.DevicePointVersions.Ctx(ctx).Data(do.DevicePointVersions{
 			Id:           "dpv-" + pointId + "-1",
 			PointId:      pointId,
 			DeviceId:     req.DeviceId,
@@ -130,7 +131,7 @@ func (s *Service) Create(ctx context.Context, req *devicev1.CreateDevicePointReq
 			Version:      1,
 			SnapshotJson: string(snapshotJSON),
 			ChangeNote:   "新增设备点位",
-		}); err != nil {
+		}).Insert(); err != nil {
 			return gerror.Wrap(err, "新增设备点位版本失败")
 		}
 		return nil
@@ -176,7 +177,7 @@ func (s *Service) ReplaceByDevice(ctx context.Context, deviceId string, items []
 	}
 	keep := map[string]bool{}
 
-	if err := dao.DevicePoints.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+	if err := dao.DevicePoints.Transaction(ctx, func(ctx context.Context, _ gdb.TX) error {
 		for _, item := range normalized {
 			keep[item.Id] = true
 			tagsJSON, err := json.Marshal(emptyStringMap(item.Tags))
@@ -201,15 +202,18 @@ func (s *Service) ReplaceByDevice(ctx context.Context, deviceId string, items []
 				MetadataJson: string(metadataJSON),
 			}
 			if _, exists := existingMap[item.Id]; exists {
-				if _, err := tx.Update(dao.DevicePoints.Table(), data, do.DevicePoints{Id: item.Id}); err != nil {
+				if _, err := dao.DevicePoints.Ctx(ctx).
+					Where(do.DevicePoints{Id: item.Id}).
+					Data(data).
+					Update(); err != nil {
 					return gerror.Wrap(err, "更新设备点位失败")
 				}
 			} else {
-				if _, err := tx.Insert(dao.DevicePoints.Table(), data); err != nil {
+				if _, err := dao.DevicePoints.Ctx(ctx).Data(data).Insert(); err != nil {
 					return gerror.Wrap(err, "新增设备点位失败")
 				}
 			}
-			if err := insertPointVersion(ctx, tx, item, "保存设备点位表"); err != nil {
+			if err := insertPointVersion(ctx, item, "保存设备点位表"); err != nil {
 				return err
 			}
 		}
@@ -217,7 +221,9 @@ func (s *Service) ReplaceByDevice(ctx context.Context, deviceId string, items []
 			if keep[point.Id] {
 				continue
 			}
-			if _, err := tx.Delete(dao.DevicePoints.Table(), do.DevicePoints{Id: point.Id}); err != nil {
+			if _, err := dao.DevicePoints.Ctx(ctx).
+				Where(do.DevicePoints{Id: point.Id}).
+				Delete(); err != nil {
 				return gerror.Wrap(err, "删除设备点位失败")
 			}
 		}
@@ -255,7 +261,9 @@ func (s *Service) currentConfig(ctx context.Context, deviceId string, pluginId s
 		PluginId: pluginId,
 		Active:   1,
 	}).Scan(&config); err != nil {
-		return nil, gerror.Wrapf(err, "读取设备插件配置失败: %s", deviceId)
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, gerror.Wrapf(err, "读取设备插件配置失败: %s", deviceId)
+		}
 	}
 	if config.Id == "" || strings.TrimSpace(config.ConfigJson) == "" {
 		return nil, gerror.Newf("设备缺少插件运行配置: %s", deviceId)
@@ -267,8 +275,7 @@ func (s *Service) currentConfig(ctx context.Context, deviceId string, pluginId s
 	return values, nil
 }
 
-func insertPointVersion(ctx context.Context, tx gdb.TX, point commonv1.PointItem, note string) error {
-	_ = ctx
+func insertPointVersion(ctx context.Context, point commonv1.PointItem, note string) error {
 	snapshotJSON, err := json.Marshal(map[string]any{
 		"name":      point.Name,
 		"address":   point.Address,
@@ -278,7 +285,7 @@ func insertPointVersion(ctx context.Context, tx gdb.TX, point commonv1.PointItem
 	if err != nil {
 		return gerror.Wrap(err, "序列化点位版本失败")
 	}
-	if _, err := tx.Insert(dao.DevicePointVersions.Table(), do.DevicePointVersions{
+	if _, err := dao.DevicePointVersions.Ctx(ctx).Data(do.DevicePointVersions{
 		Id:           "dpv-" + guid.S(),
 		PointId:      point.Id,
 		DeviceId:     point.DeviceId,
@@ -286,7 +293,7 @@ func insertPointVersion(ctx context.Context, tx gdb.TX, point commonv1.PointItem
 		Version:      1,
 		SnapshotJson: string(snapshotJSON),
 		ChangeNote:   note,
-	}); err != nil {
+	}).Insert(); err != nil {
 		return gerror.Wrap(err, "新增设备点位版本失败")
 	}
 	return nil

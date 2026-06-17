@@ -82,6 +82,26 @@
         font-size: 12px;
         line-height: 18px;
       }
+
+      .status {
+        grid-column: 1 / -1;
+        min-height: 20px;
+        margin: 0;
+        font-size: 12px;
+        line-height: 18px;
+      }
+
+      .status[data-tone='success'] {
+        color: #059669;
+      }
+
+      .status[data-tone='warning'] {
+        color: #d97706;
+      }
+
+      .status[data-tone='error'] {
+        color: #dc2626;
+      }
     </style>
   </head>
   <body>
@@ -129,7 +149,8 @@
         单请求重试次数
         <input name="maxRetryPerRequest" type="number" min="1" max="5" />
       </label>
-      <p class="hint">此页面只负责编辑体验，保存、测试和最终校验均由宿主完成。</p>
+      <p class="hint">此页面会直接调用主服务接口保存配置和测试连接，宿主只负责同步状态与展示运行信息。</p>
+      <p id="status-message" class="status" aria-live="polite"></p>
       <div class="actions">
         <button type="button" id="test-button">测试连接</button>
         <button type="submit" class="primary">保存配置</button>

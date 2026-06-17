@@ -84,6 +84,20 @@ configSchema:
       rules:
         minimum: 1
         maximum: 125
+    debugLogLimit:
+      type: number
+      title: 调试日志窗口
+      default: 500
+      rules:
+        minimum: 1
+        maximum: 5000
+    maxRetryPerRequest:
+      type: number
+      title: 单请求重试次数
+      default: 1
+      rules:
+        minimum: 1
+        maximum: 5
 customConfigPage:
   enabled: true
   entry: assets/config.html

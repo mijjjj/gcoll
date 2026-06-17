@@ -26,6 +26,7 @@ import PageHeader from '../components/common/PageHeader.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import { useConsoleStore } from '../stores/console'
 import type { DeviceGroup, DeviceItem, PointItem, RuntimeEvent } from '../api/console'
+import { getCurrentLanguage } from '../i18n'
 
 interface ConfigField {
   name: string
@@ -184,13 +185,7 @@ const eventColumns: DataTableColumns<RuntimeEvent> = [
 watch(
   () => configPage.value?.config,
   (config) => {
-    const draft: Record<string, unknown> = { ...(config ?? {}) }
-    for (const field of configFields.value) {
-      if (draft[field.name] === undefined && field.defaultValue !== undefined) {
-        draft[field.name] = field.defaultValue
-      }
-    }
-    configDraft.value = draft
+    configDraft.value = { ...(config ?? {}) }
     nextTick(postConfigToIframe)
   },
   { immediate: true },
@@ -334,7 +329,7 @@ async function saveConfig() {
 }
 
 async function testConnection() {
-  const result = await consoleStore.testDevicePluginConnection()
+  const result = await consoleStore.testDevicePluginConnection(configDraft.value)
   if (result?.success) {
     message.success(result.message)
   } else if (result?.message) {
@@ -405,6 +400,8 @@ function postConfigToIframe() {
   iframeRef.value?.contentWindow?.postMessage({
     type: 'gcoll:init',
     payload: {
+      apiBase: '/api/v1',
+      language: getCurrentLanguage(),
       config: configDraft.value,
       schema: configPage.value?.configSchema ?? {},
       device: selectedDevice.value,
@@ -419,10 +416,10 @@ function handlePluginMessage(event: MessageEvent) {
   if (!data?.type) return
   if (data.type === 'gcoll:config-change' && data.payload && typeof data.payload === 'object') {
     configDraft.value = { ...(data.payload as Record<string, unknown>) }
-  } else if (data.type === 'gcoll:save-config') {
-    void saveConfig()
-  } else if (data.type === 'gcoll:test-connection') {
-    void testConnection()
+  } else if (data.type === 'gcoll:config-saved') {
+    void consoleStore.loadSelectedDeviceDetails()
+  } else if (data.type === 'gcoll:test-finished') {
+    void consoleStore.loadDevicePluginConfigPage()
   }
 }
 </script>
@@ -512,7 +509,7 @@ function handlePluginMessage(event: MessageEvent) {
                   </NAlert>
 
                   <div v-if="useCustomConfigPage" class="plugin-page-frame">
-                    <iframe ref="iframeRef" title="插件设备配置页" sandbox="allow-scripts allow-forms" :srcdoc="configSrcdoc" @load="postConfigToIframe" />
+                    <iframe ref="iframeRef" title="插件设备配置页" sandbox="allow-scripts allow-forms allow-same-origin" :srcdoc="configSrcdoc" @load="postConfigToIframe" />
                   </div>
 
                   <NForm v-else class="device-protocol-form" label-placement="top">
@@ -543,7 +540,7 @@ function handlePluginMessage(event: MessageEvent) {
                     </NFormItem>
                   </NForm>
 
-                  <div class="form-actions">
+                  <div v-if="!useCustomConfigPage" class="form-actions">
                     <NButton secondary :loading="consoleStore.loading" @click="testConnection">
                       <template #icon><PlugZap :size="14" /></template>
                       测试连接
@@ -567,7 +564,7 @@ function handlePluginMessage(event: MessageEvent) {
                     <div><dt>点位数量</dt><dd>{{ pointDraft.length }}</dd></div>
                   </div>
                   <NAlert class="device-plugin-alert" type="info" :bordered="false">
-                    插件自定义页面只能通过宿主消息通道保存和测试，最终配置仍保存在主程序数据库。
+                    {{ useCustomConfigPage ? '插件自定义页面会直接调用主服务接口保存和测试，宿主只负责状态同步与结果展示。' : '系统简单配置页由宿主统一渲染字段、保存配置并测试连接。' }}
                   </NAlert>
                   <NDataTable class="events-table" size="small" :columns="eventColumns" :data="configPage?.recentEvents ?? []" :bordered="false" />
                 </div>
