@@ -18,5 +18,4 @@ type Plugins struct {
 	Enabled       int    `json:"enabled"       orm:"enabled"        ` //
 	InstalledAt   string `json:"installedAt"   orm:"installed_at"   ` //
 	UpdatedAt     string `json:"updatedAt"     orm:"updated_at"     ` //
-	DeletedAt     string `json:"deletedAt"     orm:"deleted_at"     ` //
 }

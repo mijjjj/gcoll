@@ -22,5 +22,4 @@ type CollectionTasks struct {
 	LastCollectedAt any //
 	CreatedAt       any //
 	UpdatedAt       any //
-	DeletedAt       any //
 }

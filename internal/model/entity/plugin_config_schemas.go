@@ -12,5 +12,4 @@ type PluginConfigSchemas struct {
 	SchemaVersion   int    `json:"schemaVersion"   orm:"schema_version"    ` //
 	SchemaJson      string `json:"schemaJson"      orm:"schema_json"       ` //
 	CreatedAt       string `json:"createdAt"       orm:"created_at"        ` //
-	DeletedAt       string `json:"deletedAt"       orm:"deleted_at"        ` //
 }

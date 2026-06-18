@@ -26,7 +26,6 @@ type DeviceGroupsColumns struct {
 	SortOrder string //
 	CreatedAt string //
 	UpdatedAt string //
-	DeletedAt string //
 }
 
 // deviceGroupsColumns holds the columns for the table device_groups.
@@ -36,7 +35,6 @@ var deviceGroupsColumns = DeviceGroupsColumns{
 	SortOrder: "sort_order",
 	CreatedAt: "created_at",
 	UpdatedAt: "updated_at",
-	DeletedAt: "deleted_at",
 }
 
 // NewDeviceGroupsDao creates and returns a new DAO object for table data access.

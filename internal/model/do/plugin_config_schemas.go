@@ -17,5 +17,4 @@ type PluginConfigSchemas struct {
 	SchemaVersion   any //
 	SchemaJson      any //
 	CreatedAt       any //
-	DeletedAt       any //
 }

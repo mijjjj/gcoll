@@ -17,5 +17,4 @@ type CollectionTasks struct {
 	LastCollectedAt string `json:"lastCollectedAt" orm:"last_collected_at" ` //
 	CreatedAt       string `json:"createdAt"       orm:"created_at"        ` //
 	UpdatedAt       string `json:"updatedAt"       orm:"updated_at"        ` //
-	DeletedAt       string `json:"deletedAt"       orm:"deleted_at"        ` //
 }

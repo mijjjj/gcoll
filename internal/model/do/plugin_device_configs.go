@@ -21,5 +21,4 @@ type PluginDeviceConfigs struct {
 	Active     any //
 	CreatedAt  any //
 	UpdatedAt  any //
-	DeletedAt  any //
 }

@@ -31,7 +31,6 @@ type PluginDeviceConfigsColumns struct {
 	Active     string //
 	CreatedAt  string //
 	UpdatedAt  string //
-	DeletedAt  string //
 }
 
 // pluginDeviceConfigsColumns holds the columns for the table plugin_device_configs.
@@ -46,7 +45,6 @@ var pluginDeviceConfigsColumns = PluginDeviceConfigsColumns{
 	Active:     "active",
 	CreatedAt:  "created_at",
 	UpdatedAt:  "updated_at",
-	DeletedAt:  "deleted_at",
 }
 
 // NewPluginDeviceConfigsDao creates and returns a new DAO object for table data access.

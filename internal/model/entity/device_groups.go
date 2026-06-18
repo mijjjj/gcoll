@@ -11,5 +11,4 @@ type DeviceGroups struct {
 	SortOrder int    `json:"sortOrder" orm:"sort_order" ` //
 	CreatedAt string `json:"createdAt" orm:"created_at" ` //
 	UpdatedAt string `json:"updatedAt" orm:"updated_at" ` //
-	DeletedAt string `json:"deletedAt" orm:"deleted_at" ` //
 }

@@ -33,7 +33,6 @@ type PluginsColumns struct {
 	Enabled       string //
 	InstalledAt   string //
 	UpdatedAt     string //
-	DeletedAt     string //
 }
 
 // pluginsColumns holds the columns for the table plugins.
@@ -50,7 +49,6 @@ var pluginsColumns = PluginsColumns{
 	Enabled:       "enabled",
 	InstalledAt:   "installed_at",
 	UpdatedAt:     "updated_at",
-	DeletedAt:     "deleted_at",
 }
 
 // NewPluginsDao creates and returns a new DAO object for table data access.

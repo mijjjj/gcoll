@@ -27,7 +27,6 @@ type PluginConfigSchemasColumns struct {
 	SchemaVersion   string //
 	SchemaJson      string //
 	CreatedAt       string //
-	DeletedAt       string //
 }
 
 // pluginConfigSchemasColumns holds the columns for the table plugin_config_schemas.
@@ -38,7 +37,6 @@ var pluginConfigSchemasColumns = PluginConfigSchemasColumns{
 	SchemaVersion:   "schema_version",
 	SchemaJson:      "schema_json",
 	CreatedAt:       "created_at",
-	DeletedAt:       "deleted_at",
 }
 
 // NewPluginConfigSchemasDao creates and returns a new DAO object for table data access.

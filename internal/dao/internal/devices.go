@@ -34,7 +34,6 @@ type DevicesColumns struct {
 	MetadataJson string //
 	CreatedAt    string //
 	UpdatedAt    string //
-	DeletedAt    string //
 }
 
 // devicesColumns holds the columns for the table devices.
@@ -52,7 +51,6 @@ var devicesColumns = DevicesColumns{
 	MetadataJson: "metadata_json",
 	CreatedAt:    "created_at",
 	UpdatedAt:    "updated_at",
-	DeletedAt:    "deleted_at",
 }
 
 // NewDevicesDao creates and returns a new DAO object for table data access.

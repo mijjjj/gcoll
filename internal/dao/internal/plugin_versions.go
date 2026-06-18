@@ -33,7 +33,6 @@ type PluginVersionsColumns struct {
 	InstalledAt      string //
 	CreatedAt        string //
 	UpdatedAt        string //
-	DeletedAt        string //
 }
 
 // pluginVersionsColumns holds the columns for the table plugin_versions.
@@ -50,7 +49,6 @@ var pluginVersionsColumns = PluginVersionsColumns{
 	InstalledAt:      "installed_at",
 	CreatedAt:        "created_at",
 	UpdatedAt:        "updated_at",
-	DeletedAt:        "deleted_at",
 }
 
 // NewPluginVersionsDao creates and returns a new DAO object for table data access.

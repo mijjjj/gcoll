@@ -24,5 +24,4 @@ type Devices struct {
 	MetadataJson any //
 	CreatedAt    any //
 	UpdatedAt    any //
-	DeletedAt    any //
 }

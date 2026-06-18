@@ -23,5 +23,4 @@ type Plugins struct {
 	Enabled       any //
 	InstalledAt   any //
 	UpdatedAt     any //
-	DeletedAt     any //
 }

@@ -32,7 +32,6 @@ type CollectionTasksColumns struct {
 	LastCollectedAt string //
 	CreatedAt       string //
 	UpdatedAt       string //
-	DeletedAt       string //
 }
 
 // collectionTasksColumns holds the columns for the table collection_tasks.
@@ -48,7 +47,6 @@ var collectionTasksColumns = CollectionTasksColumns{
 	LastCollectedAt: "last_collected_at",
 	CreatedAt:       "created_at",
 	UpdatedAt:       "updated_at",
-	DeletedAt:       "deleted_at",
 }
 
 // NewCollectionTasksDao creates and returns a new DAO object for table data access.

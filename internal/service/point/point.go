@@ -221,9 +221,11 @@ func (s *Service) ReplaceByDevice(ctx context.Context, deviceId string, items []
 			if keep[point.Id] {
 				continue
 			}
+			if err := ensurePointID(point.Id); err != nil {
+				return err
+			}
 			if _, err := dao.DevicePoints.Ctx(ctx).
-				Where(do.DevicePoints{Id: point.Id}).
-				Delete(); err != nil {
+				Delete(do.DevicePoints{Id: point.Id}); err != nil {
 				return gerror.Wrap(err, "删除设备点位失败")
 			}
 		}
@@ -345,6 +347,13 @@ func emptyAnyMap(values map[string]any) map[string]any {
 		return map[string]any{}
 	}
 	return values
+}
+
+func ensurePointID(pointID string) error {
+	if strings.TrimSpace(pointID) == "" {
+		return gerror.New("点位删除条件不能为空: pointId")
+	}
+	return nil
 }
 
 func boolInt(value bool) int {

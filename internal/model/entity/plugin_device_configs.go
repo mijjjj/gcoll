@@ -16,5 +16,4 @@ type PluginDeviceConfigs struct {
 	Active     int    `json:"active"     orm:"active"      ` //
 	CreatedAt  string `json:"createdAt"  orm:"created_at"  ` //
 	UpdatedAt  string `json:"updatedAt"  orm:"updated_at"  ` //
-	DeletedAt  string `json:"deletedAt"  orm:"deleted_at"  ` //
 }

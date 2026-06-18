@@ -128,7 +128,7 @@ func (s *Service) DeleteGroup(ctx context.Context, groupID string) error {
 	if deviceCount > 0 {
 		return gerror.Newf("设备分组下仍有设备，不能删除: %s", groupID)
 	}
-	if _, err := dao.DeviceGroups.Ctx(ctx).Where(do.DeviceGroups{Id: groupID}).Delete(); err != nil {
+	if _, err := dao.DeviceGroups.Ctx(ctx).Delete(do.DeviceGroups{Id: groupID}); err != nil {
 		return gerror.Wrapf(err, "删除设备分组失败: %s", groupID)
 	}
 	return nil
@@ -249,6 +249,9 @@ func (s *Service) MoveToGroup(ctx context.Context, deviceID string, groupID stri
 
 // Delete 删除设备及其控制面关联数据。
 func (s *Service) Delete(ctx context.Context, deviceID string) error {
+	if err := ensureDeleteConditionValue("deviceID", deviceID); err != nil {
+		return err
+	}
 	if _, err := s.Get(ctx, deviceID); err != nil {
 		return err
 	}
@@ -266,34 +269,22 @@ func (s *Service) Delete(ctx context.Context, deviceID string) error {
 	}
 
 	if err := dao.Devices.Transaction(ctx, func(ctx context.Context, _ gdb.TX) error {
-		if _, err := dao.PluginDeviceConfigVersions.Ctx(ctx).
-			Where(dao.PluginDeviceConfigVersions.Columns().DeviceId, deviceID).
-			Delete(); err != nil {
+		if _, err := dao.PluginDeviceConfigVersions.Ctx(ctx).Delete(do.PluginDeviceConfigVersions{DeviceId: deviceID}); err != nil {
 			return gerror.Wrap(err, "删除设备插件配置版本失败")
 		}
-		if _, err := dao.PluginDeviceConfigs.Ctx(ctx).
-			Where(dao.PluginDeviceConfigs.Columns().DeviceId, deviceID).
-			Delete(); err != nil {
+		if _, err := dao.PluginDeviceConfigs.Ctx(ctx).Delete(do.PluginDeviceConfigs{DeviceId: deviceID}); err != nil {
 			return gerror.Wrap(err, "删除设备插件配置失败")
 		}
-		if _, err := dao.DevicePointVersions.Ctx(ctx).
-			Where(dao.DevicePointVersions.Columns().DeviceId, deviceID).
-			Delete(); err != nil {
+		if _, err := dao.DevicePointVersions.Ctx(ctx).Delete(do.DevicePointVersions{DeviceId: deviceID}); err != nil {
 			return gerror.Wrap(err, "删除设备点位版本失败")
 		}
-		if _, err := dao.DevicePoints.Ctx(ctx).
-			Where(dao.DevicePoints.Columns().DeviceId, deviceID).
-			Delete(); err != nil {
+		if _, err := dao.DevicePoints.Ctx(ctx).Delete(do.DevicePoints{DeviceId: deviceID}); err != nil {
 			return gerror.Wrap(err, "删除设备点位失败")
 		}
-		if _, err := dao.CollectionTasks.Ctx(ctx).
-			Where(dao.CollectionTasks.Columns().DeviceId, deviceID).
-			Delete(); err != nil {
+		if _, err := dao.CollectionTasks.Ctx(ctx).Delete(do.CollectionTasks{DeviceId: deviceID}); err != nil {
 			return gerror.Wrap(err, "删除设备采集任务失败")
 		}
-		if _, err := dao.Devices.Ctx(ctx).
-			Where(dao.Devices.Columns().Id, deviceID).
-			Delete(); err != nil {
+		if _, err := dao.Devices.Ctx(ctx).Delete(do.Devices{Id: deviceID}); err != nil {
 			return gerror.Wrap(err, "删除设备失败")
 		}
 		return nil
@@ -487,6 +478,13 @@ func initialConfigJSON(hasConfig bool, configJSON string) string {
 		return configJSON
 	}
 	return ""
+}
+
+func ensureDeleteConditionValue(name string, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return gerror.Newf("删除条件不能为空: %s", name)
+	}
+	return nil
 }
 
 func displayTime(value string, empty string) string {

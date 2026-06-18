@@ -32,6 +32,7 @@
 - 数据访问以 `internal/dao` 作为模型入口；读取结果使用 `internal/model/entity`，写入、更新与条件写回优先使用 `internal/model/do`。
 - 不使用 `map` 作为常规写入结构；优先使用 GoFrame `do` 结构，让空值字段保持 `nil` 并由 ORM 自动忽略。
 - 事务必须通过 GoFrame `Transaction` 包裹；事务回调内统一通过传入的 `ctx` 继续调用 `dao.*.Ctx(ctx)` 或 `db.Ctx(ctx)`，不要直接调用 `tx.Insert`、`tx.Update`、`tx.Delete`、`tx.Exec`。
+- 执行 `Delete`、`Update` 或其他依赖业务键的数据库操作前，先在业务层校验关键条件不为空，不把空条件判断留给 ORM 兜底。
 - GoFrame 已提供等效能力时，优先使用 GoFrame 的工具库、组件和辅助方法。
 
 ## 验证

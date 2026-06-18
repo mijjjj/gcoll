@@ -23,5 +23,4 @@ type PluginVersions struct {
 	InstalledAt      any //
 	CreatedAt        any //
 	UpdatedAt        any //
-	DeletedAt        any //
 }

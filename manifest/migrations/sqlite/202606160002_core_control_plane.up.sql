@@ -17,7 +17,6 @@ CREATE TABLE IF NOT EXISTS plugins (
   enabled INTEGER NOT NULL DEFAULT 1,
   installed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TEXT,
   CHECK (type IN ('system', 'southbound', 'northbound')),
   CHECK (runtime IN ('process')),
   CHECK (protocol IN ('grpc')),
@@ -38,13 +37,11 @@ CREATE TABLE IF NOT EXISTS plugin_versions (
   installed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TEXT,
   CHECK (active IN (0, 1))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_plugin_versions_plugin_version
-  ON plugin_versions(plugin_id, version)
-  WHERE deleted_at IS NULL;
+  ON plugin_versions(plugin_id, version);
 
 CREATE TABLE IF NOT EXISTS plugin_config_schemas (
   id TEXT PRIMARY KEY,
@@ -52,21 +49,18 @@ CREATE TABLE IF NOT EXISTS plugin_config_schemas (
   plugin_version_id TEXT NOT NULL,
   schema_version INTEGER NOT NULL DEFAULT 1,
   schema_json TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TEXT
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_plugin_config_schemas_plugin
-  ON plugin_config_schemas(plugin_id, plugin_version_id)
-  WHERE deleted_at IS NULL;
+  ON plugin_config_schemas(plugin_id, plugin_version_id);
 
 CREATE TABLE IF NOT EXISTS device_groups (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TEXT
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS devices (
@@ -83,7 +77,6 @@ CREATE TABLE IF NOT EXISTS devices (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TEXT,
   CHECK (status IN ('online', 'offline', 'disabled', 'error')),
   CHECK (enabled IN (0, 1)),
   CHECK (report_mode IN ('change', 'all')),
@@ -91,16 +84,13 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_code
-  ON devices(code)
-  WHERE deleted_at IS NULL;
+  ON devices(code);
 
 CREATE INDEX IF NOT EXISTS idx_devices_group
-  ON devices(group_id)
-  WHERE deleted_at IS NULL;
+  ON devices(group_id);
 
 CREATE INDEX IF NOT EXISTS idx_devices_plugin
-  ON devices(plugin_id)
-  WHERE deleted_at IS NULL;
+  ON devices(plugin_id);
 
 CREATE TABLE IF NOT EXISTS plugin_device_configs (
   id TEXT PRIMARY KEY,
@@ -113,7 +103,6 @@ CREATE TABLE IF NOT EXISTS plugin_device_configs (
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TEXT,
   CHECK (report_mode IN ('change', 'all')),
   CHECK (enabled IN (0, 1)),
   CHECK (active IN (0, 1)),
@@ -121,8 +110,8 @@ CREATE TABLE IF NOT EXISTS plugin_device_configs (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_plugin_device_configs_active
-  ON plugin_device_configs(device_id, plugin_id, active)
-  WHERE deleted_at IS NULL AND active = 1;
+  ON plugin_device_configs(device_id, plugin_id)
+  WHERE active = 1;
 
 CREATE TABLE IF NOT EXISTS plugin_device_config_versions (
   id TEXT PRIMARY KEY,
@@ -151,19 +140,16 @@ CREATE TABLE IF NOT EXISTS device_points (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TEXT,
   CHECK (value_type IN ('bool', 'int', 'float', 'string', 'bytes', 'datetime', 'json')),
   CHECK (enabled IN (0, 1)),
   FOREIGN KEY (device_id) REFERENCES devices(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_device_points_device
-  ON device_points(device_id)
-  WHERE deleted_at IS NULL;
+  ON device_points(device_id);
 
 CREATE INDEX IF NOT EXISTS idx_device_points_plugin
-  ON device_points(plugin_id)
-  WHERE deleted_at IS NULL;
+  ON device_points(plugin_id);
 
 CREATE TABLE IF NOT EXISTS device_point_versions (
   id TEXT PRIMARY KEY,
@@ -190,19 +176,16 @@ CREATE TABLE IF NOT EXISTS collection_tasks (
   last_collected_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TEXT,
   CHECK (report_mode IN ('change', 'all')),
   CHECK (status IN ('running', 'stopped', 'disabled', 'error')),
   FOREIGN KEY (device_id) REFERENCES devices(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_collection_tasks_device
-  ON collection_tasks(device_id)
-  WHERE deleted_at IS NULL;
+  ON collection_tasks(device_id);
 
 CREATE INDEX IF NOT EXISTS idx_collection_tasks_plugin
-  ON collection_tasks(south_plugin_id)
-  WHERE deleted_at IS NULL;
+  ON collection_tasks(south_plugin_id);
 
 CREATE TABLE IF NOT EXISTS runtime_events (
   id TEXT PRIMARY KEY,
@@ -240,7 +223,6 @@ CREATE INDEX IF NOT EXISTS idx_runtime_events_device_time
 -- 字段注释：plugins.enabled：插件是否启用。
 -- 字段注释：plugins.installed_at：插件安装时间。
 -- 字段注释：plugins.updated_at：插件更新时间。
--- 字段注释：plugins.deleted_at：软删除时间。
 -- 表注释：plugin_versions：插件版本表，保存每个插件版本的清单、权限和能力声明。
 -- 字段注释：plugin_versions.id：插件版本唯一标识。
 -- 字段注释：plugin_versions.plugin_id：所属插件 ID。
@@ -254,7 +236,6 @@ CREATE INDEX IF NOT EXISTS idx_runtime_events_device_time
 -- 字段注释：plugin_versions.installed_at：版本安装时间。
 -- 字段注释：plugin_versions.created_at：记录创建时间。
 -- 字段注释：plugin_versions.updated_at：记录更新时间。
--- 字段注释：plugin_versions.deleted_at：软删除时间。
 -- 表注释：plugin_config_schemas：插件配置结构表，保存插件版本对应的配置表单和服务端校验结构。
 -- 字段注释：plugin_config_schemas.id：配置结构唯一标识。
 -- 字段注释：plugin_config_schemas.plugin_id：所属插件 ID。
@@ -262,14 +243,12 @@ CREATE INDEX IF NOT EXISTS idx_runtime_events_device_time
 -- 字段注释：plugin_config_schemas.schema_version：配置结构版本号。
 -- 字段注释：plugin_config_schemas.schema_json：配置结构 JSON。
 -- 字段注释：plugin_config_schemas.created_at：记录创建时间。
--- 字段注释：plugin_config_schemas.deleted_at：软删除时间。
 -- 表注释：device_groups：设备分组表，用于控制台设备列表归类。
 -- 字段注释：device_groups.id：设备分组唯一标识。
 -- 字段注释：device_groups.name：设备分组名称。
 -- 字段注释：device_groups.sort_order：设备分组排序值。
 -- 字段注释：device_groups.created_at：记录创建时间。
 -- 字段注释：device_groups.updated_at：记录更新时间。
--- 字段注释：device_groups.deleted_at：软删除时间。
 -- 表注释：devices：设备档案表，保存设备基础信息和绑定的南向插件 ID。
 -- 字段注释：devices.id：设备唯一标识。
 -- 字段注释：devices.name：设备名称。
@@ -284,7 +263,6 @@ CREATE INDEX IF NOT EXISTS idx_runtime_events_device_time
 -- 字段注释：devices.metadata_json：设备扩展元数据 JSON。
 -- 字段注释：devices.created_at：记录创建时间。
 -- 字段注释：devices.updated_at：记录更新时间。
--- 字段注释：devices.deleted_at：软删除时间。
 -- 表注释：plugin_device_configs：设备插件配置表，保存设备维度最终运行配置。
 -- 字段注释：plugin_device_configs.id：设备插件配置唯一标识。
 -- 字段注释：plugin_device_configs.device_id：所属设备 ID。
@@ -296,7 +274,6 @@ CREATE INDEX IF NOT EXISTS idx_runtime_events_device_time
 -- 字段注释：plugin_device_configs.active：是否为当前活跃配置。
 -- 字段注释：plugin_device_configs.created_at：记录创建时间。
 -- 字段注释：plugin_device_configs.updated_at：记录更新时间。
--- 字段注释：plugin_device_configs.deleted_at：软删除时间。
 -- 表注释：plugin_device_config_versions：设备插件配置版本表，保存设备配置历史快照。
 -- 字段注释：plugin_device_config_versions.id：配置版本唯一标识。
 -- 字段注释：plugin_device_config_versions.config_id：所属设备插件配置 ID。
@@ -320,7 +297,6 @@ CREATE INDEX IF NOT EXISTS idx_runtime_events_device_time
 -- 字段注释：device_points.metadata_json：插件扩展元数据 JSON，不保存敏感值。
 -- 字段注释：device_points.created_at：记录创建时间。
 -- 字段注释：device_points.updated_at：记录更新时间。
--- 字段注释：device_points.deleted_at：软删除时间。
 -- 表注释：device_point_versions：点位版本表，保存通用点位表历史快照。
 -- 字段注释：device_point_versions.id：点位版本唯一标识。
 -- 字段注释：device_point_versions.point_id：所属点位 ID。
@@ -342,7 +318,6 @@ CREATE INDEX IF NOT EXISTS idx_runtime_events_device_time
 -- 字段注释：collection_tasks.last_collected_at：最近采集时间。
 -- 字段注释：collection_tasks.created_at：记录创建时间。
 -- 字段注释：collection_tasks.updated_at：记录更新时间。
--- 字段注释：collection_tasks.deleted_at：软删除时间。
 -- 表注释：runtime_events：运行事件表，保存低频运行事件、调试摘要和控制面日志。
 -- 字段注释：runtime_events.id：运行事件唯一标识。
 -- 字段注释：runtime_events.time：事件发生时间。

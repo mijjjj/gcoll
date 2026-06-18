@@ -16,5 +16,4 @@ type DeviceGroups struct {
 	SortOrder any //
 	CreatedAt any //
 	UpdatedAt any //
-	DeletedAt any //
 }
