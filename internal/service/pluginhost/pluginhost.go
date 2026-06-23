@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -40,6 +41,8 @@ const (
 	pluginModeProduction    = "production"
 	configPluginMode        = "pluginHost.mode"
 	configPluginAutoCompile = "pluginHost.autoCompile"
+	pluginPIDFileName       = ".gcoll-plugin.pid"
+	pluginStopTimeout       = 5 * time.Second
 )
 
 var defaultService = New()
@@ -70,13 +73,22 @@ type CustomAssetPage struct {
 
 // RuntimePlugin 描述内存中的插件运行时记录。
 type RuntimePlugin struct {
-	Manifest  Manifest
-	Directory string
-	Source    string
-	EntryPath string
-	Status    string
-	UpdatedAt string
-	Cmd       *exec.Cmd
+	Manifest      Manifest
+	Directory     string
+	Source        string
+	EntryPath     string
+	Status        string
+	UpdatedAt     string
+	Cmd           *exec.Cmd
+	Pid           int
+	waitDone      chan struct{}
+	stopRequested bool
+}
+
+// pluginPIDState 描述落盘的插件进程跟踪信息。
+type pluginPIDState struct {
+	Pid       int    `json:"pid"`
+	EntryPath string `json:"entryPath"`
 }
 
 // LatestPointValue 描述内存中的最新点位值。
@@ -148,10 +160,24 @@ func Init(ctx context.Context) error {
 	return defaultService.LoadAndStart(ctx)
 }
 
+// Shutdown 停止宿主启动的插件进程并归位运行时状态。
+func Shutdown(ctx context.Context) error {
+	return defaultService.Shutdown(ctx)
+}
+
 // LoadAndStart 从插件目录加载插件到内存并启动进程。
 func (s *Service) LoadAndStart(ctx context.Context) error {
 	settings, err := loadSettings(ctx)
 	if err != nil {
+		return err
+	}
+	if err := s.stopAllRuntimeProcesses(ctx); err != nil {
+		return err
+	}
+	if err := s.stopTrackedPluginProcesses(ctx, settings.RootDir); err != nil {
+		return err
+	}
+	if err := s.normalizeRuntimeState(ctx); err != nil {
 		return err
 	}
 
@@ -169,14 +195,35 @@ func (s *Service) LoadAndStart(ctx context.Context) error {
 	s.loaded = true
 	s.mu.Unlock()
 
+	started := make([]*RuntimePlugin, 0, len(loaded))
 	for _, plugin := range loaded {
 		if err := s.startRuntimeProcess(ctx, plugin); err != nil {
 			plugin.Status = "failed"
 			_ = s.appendRuntimeEvent(ctx, "ERROR", "pluginhost", plugin.Manifest.Id, "", "", err.Error(), "")
+			_ = s.stopPlugins(ctx, started)
 			return err
 		}
+		started = append(started, plugin)
 	}
 	return nil
+}
+
+// Shutdown 停止宿主当前进程管理的插件和采集任务。
+func (s *Service) Shutdown(ctx context.Context) error {
+	settings, err := loadSettings(ctx)
+	if err != nil {
+		return err
+	}
+	if err := s.stopAllTasks(ctx); err != nil {
+		return err
+	}
+	if err := s.stopAllRuntimeProcesses(ctx); err != nil {
+		return err
+	}
+	if err := s.stopTrackedPluginProcesses(ctx, settings.RootDir); err != nil {
+		return err
+	}
+	return s.normalizeRuntimeState(ctx)
 }
 
 // List 返回内存插件注册表。
@@ -589,6 +636,154 @@ func (s *Service) ensurePluginStarted(ctx context.Context, pluginID string) erro
 	return s.startRuntimeProcess(ctx, plugin)
 }
 
+func (s *Service) stopAllTasks(ctx context.Context) error {
+	s.mu.Lock()
+	taskCancels := make([]context.CancelFunc, 0, len(s.taskCancels))
+	for taskID, cancel := range s.taskCancels {
+		if cancel != nil {
+			taskCancels = append(taskCancels, cancel)
+		}
+		delete(s.taskCancels, taskID)
+	}
+	s.mu.Unlock()
+
+	for _, cancel := range taskCancels {
+		cancel()
+	}
+
+	if _, err := dao.CollectionTasks.Ctx(ctx).
+		Where(do.CollectionTasks{Status: "running"}).
+		Data(do.CollectionTasks{Status: "stopped", Rate: "0 条/秒"}).
+		Update(); err != nil {
+		return gerror.Wrap(err, "归位采集任务状态失败")
+	}
+	return nil
+}
+
+func (s *Service) stopAllRuntimeProcesses(ctx context.Context) error {
+	s.mu.Lock()
+	plugins := make([]*RuntimePlugin, 0, len(s.registry))
+	for _, plugin := range s.registry {
+		plugins = append(plugins, plugin)
+	}
+	s.mu.Unlock()
+	sort.Slice(plugins, func(i, j int) bool {
+		return plugins[i].Manifest.Id < plugins[j].Manifest.Id
+	})
+	return s.stopPlugins(ctx, plugins)
+}
+
+func (s *Service) stopPlugins(ctx context.Context, plugins []*RuntimePlugin) error {
+	var stopErrs []error
+	for _, plugin := range plugins {
+		if err := s.stopRuntimeProcess(ctx, plugin); err != nil {
+			stopErrs = append(stopErrs, err)
+		}
+	}
+	return errors.Join(stopErrs...)
+}
+
+func (s *Service) stopRuntimeProcess(ctx context.Context, plugin *RuntimePlugin) error {
+	if plugin == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	pid := plugin.Pid
+	cmd := plugin.Cmd
+	waitDone := plugin.waitDone
+	if pid == 0 && cmd != nil && cmd.Process != nil {
+		pid = cmd.Process.Pid
+	}
+	if pid == 0 {
+		plugin.Status = "stopped"
+		plugin.UpdatedAt = gtime.Now().Format("Y-m-d H:i:s")
+		s.mu.Unlock()
+		_ = removePluginPIDFile(plugin.Directory)
+		return nil
+	}
+	plugin.Status = "stopping"
+	plugin.stopRequested = true
+	s.mu.Unlock()
+
+	if err := terminatePluginProcess(pid); err != nil {
+		return gerror.Wrapf(err, "关闭插件进程失败: %s", plugin.Manifest.Id)
+	}
+	if waitDone != nil {
+		select {
+		case <-waitDone:
+		case <-time.After(pluginStopTimeout):
+			return gerror.Newf("等待插件进程退出超时: %s", plugin.Manifest.Id)
+		}
+	} else {
+		s.mu.Lock()
+		plugin.Pid = 0
+		plugin.Cmd = nil
+		plugin.waitDone = nil
+		plugin.stopRequested = false
+		plugin.Status = "stopped"
+		plugin.UpdatedAt = gtime.Now().Format("Y-m-d H:i:s")
+		s.mu.Unlock()
+	}
+	_ = removePluginPIDFile(plugin.Directory)
+	return s.appendRuntimeEvent(ctx, "INFO", "pluginhost", plugin.Manifest.Id, "", "", "插件进程已停止。", "")
+}
+
+func (s *Service) stopTrackedPluginProcesses(ctx context.Context, rootDir string) error {
+	if !gfile.IsDir(rootDir) {
+		return nil
+	}
+	entries, err := os.ReadDir(rootDir)
+	if err != nil {
+		return gerror.Wrapf(err, "读取插件目录失败: %s", rootDir)
+	}
+	var stopErrs []error
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		pluginDir := filepath.Join(rootDir, entry.Name())
+		state, err := readPluginPIDState(pluginDir)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			stopErrs = append(stopErrs, err)
+			continue
+		}
+		if state == nil || state.Pid <= 0 {
+			_ = removePluginPIDFile(pluginDir)
+			continue
+		}
+		if !trackedPluginPIDBelongsToDirectory(pluginDir, state.EntryPath) {
+			_ = removePluginPIDFile(pluginDir)
+			continue
+		}
+		if err := terminatePluginProcess(state.Pid); err != nil {
+			stopErrs = append(stopErrs, gerror.Wrapf(err, "关闭遗留插件进程失败: %s", pluginDir))
+			continue
+		}
+		_ = removePluginPIDFile(pluginDir)
+	}
+	return errors.Join(stopErrs...)
+}
+
+func (s *Service) normalizeRuntimeState(ctx context.Context) error {
+	if _, err := dao.CollectionTasks.Ctx(ctx).
+		Where(do.CollectionTasks{Status: "running"}).
+		Data(do.CollectionTasks{Status: "stopped", Rate: "0 条/秒"}).
+		Update(); err != nil {
+		return gerror.Wrap(err, "重置采集任务运行状态失败")
+	}
+	if _, err := dao.Devices.Ctx(ctx).
+		Where(do.Devices{Status: "online"}).
+		Data(do.Devices{Status: "offline"}).
+		Update(); err != nil {
+		return gerror.Wrap(err, "重置设备在线状态失败")
+	}
+	return nil
+}
+
 func (s *Service) loadPluginDirectories(ctx context.Context, settings hostSettings) ([]*RuntimePlugin, error) {
 	if strings.TrimSpace(settings.RootDir) == "" {
 		return nil, gerror.New("插件目录不能为空")
@@ -678,26 +873,64 @@ func (s *Service) startRuntimeProcess(ctx context.Context, plugin *RuntimePlugin
 	cmd := exec.CommandContext(context.Background(), plugin.EntryPath)
 	cmd.Dir = plugin.Directory
 	plugin.Cmd = cmd
+	plugin.Pid = 0
+	plugin.waitDone = make(chan struct{})
+	plugin.stopRequested = false
 	plugin.Status = "starting"
+	plugin.UpdatedAt = gtime.Now().Format("Y-m-d H:i:s")
 	s.mu.Unlock()
 
 	if err := cmd.Start(); err != nil {
+		s.mu.Lock()
+		plugin.Cmd = nil
+		plugin.waitDone = nil
+		plugin.Pid = 0
 		plugin.Status = "failed"
+		plugin.UpdatedAt = gtime.Now().Format("Y-m-d H:i:s")
+		s.mu.Unlock()
 		return gerror.Wrapf(err, "启动插件进程失败: %s", plugin.EntryPath)
 	}
+	s.mu.Lock()
+	plugin.Pid = cmd.Process.Pid
 	plugin.Status = "running"
+	plugin.UpdatedAt = gtime.Now().Format("Y-m-d H:i:s")
+	waitDone := plugin.waitDone
+	s.mu.Unlock()
+
 	go func() {
 		err := cmd.Wait()
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		if waitDone != nil {
+			close(waitDone)
+		}
 		if current := s.registry[plugin.Manifest.Id]; current != nil && current.Cmd == cmd {
-			if err != nil {
+			current.Cmd = nil
+			current.Pid = 0
+			current.waitDone = nil
+			current.UpdatedAt = gtime.Now().Format("Y-m-d H:i:s")
+			if current.stopRequested {
+				current.Status = "stopped"
+			} else if err != nil {
 				current.Status = "failed"
 			} else {
 				current.Status = "stopped"
 			}
+			current.stopRequested = false
 		}
+		_ = removePluginPIDFile(plugin.Directory)
 	}()
+
+	if err := writePluginPID(plugin.Directory, plugin.Pid, plugin.EntryPath); err != nil {
+		_ = terminatePluginProcess(plugin.Pid)
+		if waitDone != nil {
+			select {
+			case <-waitDone:
+			case <-time.After(pluginStopTimeout):
+			}
+		}
+		return err
+	}
 	return s.appendRuntimeEvent(ctx, "INFO", "pluginhost", plugin.Manifest.Id, "", "", "插件进程已启动。", "")
 }
 
@@ -870,6 +1103,95 @@ func isPathInside(path string, root string) bool {
 		return false
 	}
 	return rel == "." || (!strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel))
+}
+
+func pluginPIDPath(pluginDir string) string {
+	return filepath.Join(pluginDir, pluginPIDFileName)
+}
+
+func writePluginPID(pluginDir string, pid int, entryPath string) error {
+	if pid <= 0 {
+		return gerror.Newf("插件进程 PID 无效: %s", pluginDir)
+	}
+	state := pluginPIDState{
+		Pid:       pid,
+		EntryPath: filepath.Clean(entryPath),
+	}
+	content, err := json.Marshal(state)
+	if err != nil {
+		return gerror.Wrapf(err, "序列化插件进程 PID 失败: %s", pluginDir)
+	}
+	if err := os.WriteFile(pluginPIDPath(pluginDir), content, 0o644); err != nil {
+		return gerror.Wrapf(err, "写入插件进程 PID 失败: %s", pluginDir)
+	}
+	return nil
+}
+
+func readPluginPIDState(pluginDir string) (*pluginPIDState, error) {
+	content, err := os.ReadFile(pluginPIDPath(pluginDir))
+	if err != nil {
+		return nil, err
+	}
+	text := strings.TrimSpace(string(content))
+	if text == "" {
+		return &pluginPIDState{}, nil
+	}
+	var state pluginPIDState
+	if err := json.Unmarshal(content, &state); err == nil {
+		return &state, nil
+	}
+	pid, err := strconv.Atoi(text)
+	if err != nil {
+		return nil, gerror.Wrapf(err, "解析插件进程 PID 失败: %s", pluginDir)
+	}
+	return &pluginPIDState{Pid: pid}, nil
+}
+
+func removePluginPIDFile(pluginDir string) error {
+	err := os.Remove(pluginPIDPath(pluginDir))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return gerror.Wrapf(err, "删除插件进程 PID 失败: %s", pluginDir)
+	}
+	return nil
+}
+
+func trackedPluginPIDBelongsToDirectory(pluginDir string, entryPath string) bool {
+	entryPath = strings.TrimSpace(entryPath)
+	if entryPath == "" {
+		return false
+	}
+	return isPathInside(filepath.Clean(entryPath), pluginDir)
+}
+
+func terminatePluginProcess(pid int) error {
+	if pid <= 0 {
+		return nil
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return nil
+	}
+	if runtime.GOOS == "windows" {
+		err = process.Kill()
+		if err == nil || errors.Is(err, os.ErrProcessDone) {
+			return nil
+		}
+		return err
+	}
+	if err = process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	deadline := time.Now().Add(pluginStopTimeout)
+	for time.Now().Before(deadline) {
+		if signalErr := process.Signal(syscall.Signal(0)); signalErr != nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err = process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	return nil
 }
 
 func readManifest(packagePath string) (*Manifest, error) {

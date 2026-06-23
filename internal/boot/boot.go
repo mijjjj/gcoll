@@ -21,3 +21,10 @@ func Init(ctx context.Context) {
 	}
 	g.Log().Info(ctx, "gcoll 运行时初始化完成")
 }
+
+// Shutdown 停止运行时附加资源。
+func Shutdown(ctx context.Context) {
+	if err := pluginhostsvc.Shutdown(ctx); err != nil {
+		g.Log().Errorf(ctx, "插件宿主关闭失败: %+v", err)
+	}
+}

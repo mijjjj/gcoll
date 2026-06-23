@@ -13,7 +13,6 @@ type Devices struct {
 	g.Meta       `orm:"table:devices, do:true"`
 	Id           any //
 	Name         any //
-	Code         any //
 	GroupId      any //
 	PluginId     any //
 	Status       any //

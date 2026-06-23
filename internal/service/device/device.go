@@ -168,7 +168,6 @@ func (s *Service) Create(ctx context.Context, req *devicev1.CreateDeviceReq) (*c
 		if _, err := dao.Devices.Ctx(ctx).Data(do.Devices{
 			Id:          deviceId,
 			Name:        req.Name,
-			Code:        req.Code,
 			GroupId:     req.GroupId,
 			PluginId:    req.PluginId,
 			Status:      "offline",
@@ -212,7 +211,6 @@ func (s *Service) Create(ctx context.Context, req *devicev1.CreateDeviceReq) (*c
 	return &commonv1.DeviceItem{
 		Id:          deviceId,
 		Name:        req.Name,
-		Code:        req.Code,
 		GroupId:     req.GroupId,
 		PluginId:    req.PluginId,
 		PluginName:  plugin.Manifest.Name,
@@ -445,7 +443,6 @@ func (s *Service) toDeviceItem(device entity.Devices, pluginName string, pointCo
 	return commonv1.DeviceItem{
 		Id:          device.Id,
 		Name:        device.Name,
-		Code:        device.Code,
 		GroupId:     device.GroupId,
 		PluginId:    device.PluginId,
 		PluginName:  pluginName,

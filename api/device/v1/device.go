@@ -93,7 +93,6 @@ type CreateDeviceReq struct {
 	g.Meta      `path:"/devices" method:"post" tags:"Devices" summary:"新增设备"`
 	Id          string         `json:"id"`
 	Name        string         `json:"name" v:"required#设备名称不能为空"`
-	Code        string         `json:"code" v:"required#设备编码不能为空"`
 	GroupId     string         `json:"groupId" v:"required#设备分组不能为空"`
 	PluginId    string         `json:"pluginId" v:"required#设备插件不能为空"`
 	Enabled     bool           `json:"enabled"`

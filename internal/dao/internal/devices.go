@@ -23,7 +23,6 @@ type DevicesDao struct {
 type DevicesColumns struct {
 	Id           string //
 	Name         string //
-	Code         string //
 	GroupId      string //
 	PluginId     string //
 	Status       string //
@@ -40,7 +39,6 @@ type DevicesColumns struct {
 var devicesColumns = DevicesColumns{
 	Id:           "id",
 	Name:         "name",
-	Code:         "code",
 	GroupId:      "group_id",
 	PluginId:     "plugin_id",
 	Status:       "status",

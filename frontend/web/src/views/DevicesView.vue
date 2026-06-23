@@ -62,7 +62,6 @@ const pointDraft = ref<PointItem[]>([])
 const groupForm = reactive({ name: '' })
 const deviceForm = reactive({
   name: '',
-  code: '',
   groupId: '',
   pluginId: '',
   description: '',
@@ -91,7 +90,7 @@ const filteredGroups = computed(() => {
     const devices = consoleStore.devices.filter((device) => {
       if (device.groupId !== group.id) return false
       if (!keyword) return true
-      return `${device.name} ${device.code} ${device.pluginName}`.toLowerCase().includes(keyword)
+      return `${device.name} ${device.pluginName}`.toLowerCase().includes(keyword)
     })
     return { ...group, devices }
   })
@@ -278,7 +277,6 @@ async function createGroup() {
 
 function openDeviceModal(groupId = '') {
   deviceForm.name = ''
-  deviceForm.code = ''
   deviceForm.groupId = groupId || consoleStore.deviceGroups[0]?.id || ''
   deviceForm.pluginId = pluginOptions.value[0]?.value ?? ''
   deviceForm.description = ''
@@ -452,7 +450,7 @@ function handlePluginMessage(event: MessageEvent) {
             <NButton text size="small" :disabled="!pluginOptions.length || !groupOptions.length" @click.stop="openDeviceModal()"><FilePlus :size="15" /></NButton>
           </div>
         </div>
-        <NInput v-model:value="searchText" class="device-search" size="small" clearable placeholder="搜索设备名称、编码或插件" />
+        <NInput v-model:value="searchText" class="device-search" size="small" clearable placeholder="搜索设备名称或插件" />
         <div class="device-groups">
           <div v-for="group in filteredGroups" :key="group.id" class="device-group" @contextmenu.stop="openContextMenu($event, { type: 'group', group })">
             <button class="group-title group-title--button" type="button">
@@ -475,7 +473,7 @@ function handlePluginMessage(event: MessageEvent) {
                 <span class="device-dot" :class="`device-dot--${device.status}`" />
                 <span class="device-card__main">
                   <strong>{{ device.name }}</strong>
-                  <small>{{ device.code }} / {{ device.pluginName }}</small>
+                  <small>{{ device.pluginName }}</small>
                 </span>
                 <span class="device-card__status" :class="{ 'is-online': device.status === 'online' }">{{ statusLabel(device.status) }}</span>
               </button>
@@ -490,7 +488,7 @@ function handlePluginMessage(event: MessageEvent) {
         <div v-if="selectedDevice" class="detail-titlebar detail-titlebar--header">
           <div class="detail-heading">
             <strong>{{ selectedDevice.name }}</strong>
-            <small>{{ selectedDevice.code }} / {{ selectedDevice.pluginName }}</small>
+            <small>{{ selectedDevice.pluginName }}</small>
           </div>
           <StatusBadge :label="statusLabel(selectedDevice.status)" :kind="deviceStatusKind(selectedDevice.status)" />
         </div>
@@ -636,7 +634,6 @@ function handlePluginMessage(event: MessageEvent) {
     <NModal v-model:show="showDeviceModal" preset="dialog" title="添加设备" positive-text="创建" negative-text="取消" @positive-click="createDevice">
       <NForm label-placement="top">
         <NFormItem label="设备名称"><NInput v-model:value="deviceForm.name" /></NFormItem>
-        <NFormItem label="设备编码"><NInput v-model:value="deviceForm.code" /></NFormItem>
         <NFormItem label="设备分组"><NSelect v-model:value="deviceForm.groupId" :options="groupOptions" /></NFormItem>
         <NFormItem label="南向插件"><NSelect v-model:value="deviceForm.pluginId" :options="pluginOptions" /></NFormItem>
         <NFormItem label="说明"><NInput v-model:value="deviceForm.description" type="textarea" /></NFormItem>

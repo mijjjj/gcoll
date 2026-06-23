@@ -85,7 +85,7 @@ export const useConsoleStore = defineStore('console', {
         await this.loadDevices()
       })
     },
-    async createDevice(payload: { name: string; code: string; groupId: string; pluginId: string; description: string }) {
+    async createDevice(payload: { name: string; groupId: string; pluginId: string; description: string }) {
       await this.run(async () => {
         const result = await consoleApi.createDevice({
           ...payload,

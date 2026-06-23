@@ -249,7 +249,6 @@ func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string
 		Device: commonv1.DeviceItem{
 			Id:          device.Id,
 			Name:        device.Name,
-			Code:        device.Code,
 			GroupId:     device.GroupId,
 			PluginId:    device.PluginId,
 			PluginName:  plugin.Manifest.Name,

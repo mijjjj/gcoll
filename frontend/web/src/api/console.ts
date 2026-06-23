@@ -107,7 +107,6 @@ export interface DeviceGroup {
 export interface DeviceItem {
   id: string
   name: string
-  code: string
   groupId: string
   pluginId: string
   pluginName: string

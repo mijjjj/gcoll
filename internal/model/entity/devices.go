@@ -8,7 +8,6 @@ package entity
 type Devices struct {
 	Id           string `json:"id"           orm:"id"            ` //
 	Name         string `json:"name"         orm:"name"          ` //
-	Code         string `json:"code"         orm:"code"          ` //
 	GroupId      string `json:"groupId"      orm:"group_id"      ` //
 	PluginId     string `json:"pluginId"     orm:"plugin_id"     ` //
 	Status       string `json:"status"       orm:"status"        ` //

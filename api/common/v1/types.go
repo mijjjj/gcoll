@@ -67,7 +67,6 @@ type DeviceGroup struct {
 type DeviceItem struct {
 	Id          string `json:"id"`
 	Name        string `json:"name"`
-	Code        string `json:"code"`
 	GroupId     string `json:"groupId"`
 	PluginId    string `json:"pluginId"`
 	PluginName  string `json:"pluginName"`

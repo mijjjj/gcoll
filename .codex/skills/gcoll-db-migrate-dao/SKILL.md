@@ -11,16 +11,18 @@ description: gcoll 数据库迁移与 GoFrame DAO 生成流程。用于新增或
 2. 在 `manifest/migrations/` 新增成对迁移 SQL：`*.up.sql` 与 `*.down.sql`。
 3. 迁移必须兼顾桌面 SQLite 和服务器 PostgreSQL 的当前策略；如果无法兼容，按 `manifest/migrations/sqlite/` 与 `manifest/migrations/pgsql/` 拆分维护，并保持同一版本文件名一致。
 4. 为每张表和每个字段补充中文说明：PostgreSQL 使用 `COMMENT ON TABLE` 与 `COMMENT ON COLUMN`；SQLite 在迁移 SQL 中使用 `-- 表注释：` 和 `-- 字段注释：` 注释块记录。
-5. 使用 `manifest/config/config.yaml` 中的数据库连接在仓库根目录执行迁移。
-6. 继续在仓库根目录执行 `gf gen dao`，生成 `internal/dao`、`internal/model/do`、`internal/model/entity`；不需要生成 `internal/table` 时不要使用 `-gt`。
-7. 后续代码优先使用生成的 `do` 和 `entity`。
-8. 若生成结构无法满足业务场景，再在 `internal/model` 增加业务结构体。
+5. 只要新增或修改了表、字段、索引、约束或注释，先在仓库根目录执行 `go run .codex/skills/gcoll-db-migrate-dao/scripts/reset_and_migrate.go --config manifest/config/config.yaml`。脚本必须从配置文件读取数据库连接，先将已应用迁移按版本倒序回滚到 `0`，再重新应用到最新版本。
+6. 如果需要读取非默认数据库分组，执行脚本时追加 `--group <groupName>`；禁止手写数据库连接字符串替代配置文件。
+7. 迁移重放成功后，再在仓库根目录执行 `gf gen dao`，生成 `internal/dao`、`internal/model/do`、`internal/model/entity`；不需要生成 `internal/table` 时不要使用 `-gt`。
+8. 后续代码优先使用生成的 `do` 和 `entity`。
+9. 若生成结构无法满足业务场景，再在 `internal/model` 增加业务结构体。
 
 ## 强制要求
 
 - 数据库迁移必须显式版本化。
 - SQLite 与 PostgreSQL 写法不同的迁移必须拆分目录维护，禁止在同一 SQL 中依赖某一数据库专有语法。
 - 表名和字段必须有中文注释；缺少表注释或字段注释的迁移不得交付。
+- 表或字段发生变更时，必须先执行 `reset_and_migrate.go` 完整回放迁移，再执行 `gf gen dao`。
 - 采集明细不落库。
 - 敏感配置不进入普通 JSON 字段明文。
 - 设备插件配置、点位表、插件配置结构需要历史追溯时必须支持版本化。
@@ -30,8 +32,9 @@ description: gcoll 数据库迁移与 GoFrame DAO 生成流程。用于新增或
 ## 验证
 
 ```powershell
+go run .codex/skills/gcoll-db-migrate-dao/scripts/reset_and_migrate.go --config manifest/config/config.yaml
 gf gen dao
 go test ./...
 ```
 
-如果本地缺少迁移工具、数据库或 `gf` 命令，最终说明中明确未执行的验证和原因。
+如果本地缺少迁移工具、数据库、`gf` 命令或对应数据库驱动，最终说明中明确未执行的验证和原因。

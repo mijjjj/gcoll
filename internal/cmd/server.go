@@ -27,6 +27,7 @@ const (
 // RunServer 启动 gcoll 服务端 HTTP 运行时。
 func RunServer(ctx context.Context) {
 	boot.Init(ctx)
+	defer boot.Shutdown(ctx)
 
 	s := g.Server("gcoll")
 	enhanceOpenAPIDoc(s)
