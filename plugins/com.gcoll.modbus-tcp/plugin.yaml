@@ -70,27 +70,6 @@ configSchema:
         - all
       ui:
         component: select
-    maxCoilBatch:
-      type: number
-      title: 线圈批量读取长度
-      default: 512
-      rules:
-        minimum: 1
-        maximum: 2000
-    maxRegisterBatch:
-      type: number
-      title: 寄存器批量读取长度
-      default: 64
-      rules:
-        minimum: 1
-        maximum: 125
-    debugLogLimit:
-      type: number
-      title: 调试日志窗口
-      default: 500
-      rules:
-        minimum: 1
-        maximum: 5000
     maxRetryPerRequest:
       type: number
       title: 单请求重试次数
@@ -98,6 +77,80 @@ configSchema:
       rules:
         minimum: 1
         maximum: 5
+pointSchema:
+  type: object
+  properties:
+    address:
+      type: string
+      title: 地址
+      description: 使用“读取功能:地址”格式填写，例如 holding_register:0。
+      ui:
+        component: text
+        examples:
+          - group: 线圈
+            label: 读取线圈 0
+            value: coil:0
+            description: 功能码 01，从线圈地址 0 开始读取。
+          - group: 离散输入
+            label: 读取离散输入 0
+            value: discrete_input:0
+            description: 功能码 02，从离散输入地址 0 开始读取。
+          - group: 保持寄存器
+            label: 读取保持寄存器 0
+            value: holding_register:0
+            description: 功能码 03，从保持寄存器地址 0 开始读取。
+          - group: 输入寄存器
+            label: 读取输入寄存器 0
+            value: input_register:0
+            description: 功能码 04，从输入寄存器地址 0 开始读取。
+    mode:
+      type: string
+      title: 点位模式
+      description: 读取点位使用 read，写入点位使用 write。
+      default: read
+      enum:
+        - read
+        - write
+      ui:
+        component: select
+    quantity:
+      type: number
+      title: 读取长度
+      description: 线圈点位按位数量填写，寄存器点位按寄存器数量填写。
+      default: 1
+      rules:
+        minimum: 1
+        maximum: 125
+    byteOrder:
+      type: string
+      title: 字节序
+      description: 单寄存器内字节顺序，默认 big。
+      default: big
+      enum:
+        - big
+        - little
+      ui:
+        component: select
+    wordOrder:
+      type: string
+      title: 字顺序
+      description: 多寄存器值的寄存器顺序，默认 big。
+      default: big
+      enum:
+        - big
+        - little
+      ui:
+        component: select
+    scale:
+      type: number
+      title: 缩放系数
+      description: 读取原始值后乘以该系数，默认 1。
+      default: 1
+    offset:
+      type: number
+      title: 偏移量
+      description: 缩放后再加上该偏移量，默认 0。
+      default: 0
 customConfigPage:
   enabled: true
   entry: assets/config.html

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref, watchEffect } from 'vue'
+import { computed, h, onMounted, ref, watchEffect } from 'vue'
 import {
   darkTheme,
   lightTheme,
@@ -40,14 +40,24 @@ import {
 } from '@lucide/vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import HttpErrorBridge from '../common/HttpErrorBridge.vue'
+import { useConsoleStore } from '../../stores/console'
 import { useLocaleStore } from '../../i18n'
 
 const route = useRoute()
 const router = useRouter()
 const localeStore = useLocaleStore()
+const consoleStore = useConsoleStore()
 const storedTheme = localStorage.getItem('gcoll-theme')
 const darkMode = ref(storedTheme === 'dark')
 const t = computed(() => localeStore.t)
+const runtime = computed(() => consoleStore.overview?.runtime)
+const pluginSummary = computed(() => consoleStore.overview?.pluginSummary)
+
+onMounted(() => {
+  if (!consoleStore.overview && !consoleStore.loading) {
+    void consoleStore.loadOverview()
+  }
+})
 
 const theme = computed(() => (darkMode.value ? darkTheme : lightTheme))
 const themeOverrides = computed<GlobalThemeOverrides>(() => ({
@@ -142,7 +152,7 @@ watchEffect(() => {
                 <div class="status-icon"><Database :size="22" /></div>
                 <div class="status-copy">
                   <strong>{{ t('status.sqlite') }} <span class="status-dot-text">{{ t('common.running') }}</span></strong>
-                  <small>~/.gcoll/data/gcoll.db</small>
+                  <small>{{ runtime?.database ?? '~/.gcoll/data/gcoll.db' }}</small>
                 </div>
               </div>
 
@@ -150,7 +160,7 @@ watchEffect(() => {
                 <div class="status-icon"><Globe2 :size="22" /></div>
                 <div class="status-copy">
                   <strong>{{ t('status.httpApi') }} <span class="status-dot-text">{{ t('common.running') }}</span></strong>
-                  <small>http://127.0.0.1:4120</small>
+                  <small>{{ runtime?.apiBase ?? '待连接' }}</small>
                 </div>
                 <div class="api-key-chip">APIKey</div>
                 <div class="api-secret">sk_live_••••••••••••••</div>
@@ -160,7 +170,7 @@ watchEffect(() => {
                 <div class="status-icon"><Puzzle :size="22" /></div>
                 <div class="status-copy">
                   <strong>{{ t('status.pluginProcess') }}</strong>
-                  <small class="success-text">{{ t('status.pluginCount') }}</small>
+                  <small class="success-text">{{ pluginSummary ? `${pluginSummary.running}/${pluginSummary.total}` : t('status.pluginCount') }}</small>
                 </div>
               </div>
 

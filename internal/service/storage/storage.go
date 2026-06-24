@@ -21,6 +21,12 @@ const (
 	pgsqlType      = "pgsql"
 )
 
+var migrationVersionAliasMap = map[string][]string{
+	"000001_core_control_plane":         {"202606160002_core_control_plane"},
+	"000002_remove_device_code":         {"202606230001_remove_device_code"},
+	"000003_nullable_audit_timestamps":  {"202606230002_nullable_audit_timestamps"},
+}
+
 // Init 初始化数据库目录并执行启动迁移。
 func Init(ctx context.Context) error {
 	db := g.DB()
@@ -132,7 +138,32 @@ func projectRoot() (string, error) {
 }
 
 func migrationVersion(path string) string {
-	return strings.TrimSuffix(gfile.Basename(path), ".up.sql")
+	return CanonicalMigrationVersion(strings.TrimSuffix(gfile.Basename(path), ".up.sql"))
+}
+
+// CanonicalMigrationVersion 返回迁移版本的规范名称。
+func CanonicalMigrationVersion(version string) string {
+	for canonical, aliases := range migrationVersionAliasMap {
+		if version == canonical {
+			return canonical
+		}
+		for _, alias := range aliases {
+			if version == alias {
+				return canonical
+			}
+		}
+	}
+	return version
+}
+
+// MigrationVersionAliases 返回迁移版本所有兼容名称。
+func MigrationVersionAliases(version string) []string {
+	canonical := CanonicalMigrationVersion(version)
+	aliases := []string{canonical}
+	if legacyAliases, ok := migrationVersionAliasMap[canonical]; ok {
+		aliases = append(aliases, legacyAliases...)
+	}
+	return aliases
 }
 
 func createMigrationTable(ctx context.Context, db gdb.DB, dbType string) error {
@@ -150,11 +181,13 @@ func createMigrationTable(ctx context.Context, db gdb.DB, dbType string) error {
 }
 
 func migrationApplied(ctx context.Context, db gdb.DB, version string) (bool, error) {
-	value, err := db.GetValue(ctx, "SELECT COUNT(1) FROM schema_migrations WHERE version = ?", version)
+	count, err := db.Model("schema_migrations").Ctx(ctx).
+		WhereIn("version", MigrationVersionAliases(version)).
+		Count()
 	if err != nil {
 		return false, gerror.Wrapf(err, "读取数据库迁移状态失败: %s", version)
 	}
-	return value.Int() > 0, nil
+	return count > 0, nil
 }
 
 func applyMigration(ctx context.Context, db gdb.DB, version string, file string) error {

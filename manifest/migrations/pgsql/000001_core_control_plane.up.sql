@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS plugins (
   description TEXT NOT NULL DEFAULT '',
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   installed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   CHECK (type IN ('system', 'southbound', 'northbound')),
   CHECK (runtime IN ('process')),
   CHECK (protocol IN ('grpc')),
@@ -52,8 +52,8 @@ CREATE TABLE IF NOT EXISTS plugin_versions (
   checksum TEXT NOT NULL DEFAULT '',
   active BOOLEAN NOT NULL DEFAULT FALSE,
   installed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 COMMENT ON TABLE plugin_versions IS '插件版本表，保存每个插件版本的清单、权限和能力声明。';
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS plugin_config_schemas (
   plugin_version_id TEXT NOT NULL,
   schema_version INTEGER NOT NULL DEFAULT 1,
   schema_json JSONB NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 COMMENT ON TABLE plugin_config_schemas IS '插件配置结构表，保存插件版本对应的配置表单和服务端校验结构。';
@@ -97,8 +97,8 @@ CREATE TABLE IF NOT EXISTS device_groups (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 COMMENT ON TABLE device_groups IS '设备分组表，用于控制台设备列表归类。';
@@ -120,8 +120,8 @@ CREATE TABLE IF NOT EXISTS devices (
   last_seen_at TIMESTAMPTZ,
   description TEXT NOT NULL DEFAULT '',
   metadata_json JSONB NOT NULL DEFAULT '{}'::JSONB,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   CHECK (status IN ('online', 'offline', 'disabled', 'error')),
   CHECK (report_mode IN ('change', 'all'))
 );
@@ -159,8 +159,8 @@ CREATE TABLE IF NOT EXISTS plugin_device_configs (
   report_mode TEXT NOT NULL DEFAULT 'change',
   enabled BOOLEAN NOT NULL DEFAULT FALSE,
   active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   CHECK (report_mode IN ('change', 'all'))
 );
 
@@ -188,7 +188,7 @@ CREATE TABLE IF NOT EXISTS plugin_device_config_versions (
   version INTEGER NOT NULL,
   config_json JSONB NOT NULL,
   change_note TEXT NOT NULL DEFAULT '',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 COMMENT ON TABLE plugin_device_config_versions IS '设备插件配置版本表，保存设备配置历史快照。';
@@ -213,8 +213,8 @@ CREATE TABLE IF NOT EXISTS device_points (
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   tags_json JSONB NOT NULL DEFAULT '{}'::JSONB,
   metadata_json JSONB NOT NULL DEFAULT '{}'::JSONB,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   CHECK (value_type IN ('bool', 'int', 'float', 'string', 'bytes', 'datetime', 'json'))
 );
 
@@ -247,7 +247,7 @@ CREATE TABLE IF NOT EXISTS device_point_versions (
   version INTEGER NOT NULL,
   snapshot_json JSONB NOT NULL,
   change_note TEXT NOT NULL DEFAULT '',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 COMMENT ON TABLE device_point_versions IS '点位版本表，保存通用点位表历史快照。';
@@ -270,8 +270,8 @@ CREATE TABLE IF NOT EXISTS collection_tasks (
   rule_hit_rate TEXT NOT NULL DEFAULT '0%',
   rate TEXT NOT NULL DEFAULT '0 条/秒',
   last_collected_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   CHECK (report_mode IN ('change', 'all')),
   CHECK (status IN ('running', 'stopped', 'disabled', 'error'))
 );
@@ -305,7 +305,7 @@ CREATE TABLE IF NOT EXISTS runtime_events (
   task_id TEXT,
   message TEXT NOT NULL,
   trace_id TEXT NOT NULL DEFAULT '',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
   CHECK (level IN ('DEBUG', 'INFO', 'WARN', 'ERROR'))
 );
 

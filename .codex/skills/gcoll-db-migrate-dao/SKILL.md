@@ -8,7 +8,7 @@ description: gcoll 数据库迁移与 GoFrame DAO 生成流程。用于新增或
 当表结构或字段变更时按以下顺序执行：
 
 1. 先阅读 `docs/current/02-系统架构.md` 和 `docs/current/05-开发任务规范.md`。
-2. 在 `manifest/migrations/` 新增成对迁移 SQL：`*.up.sql` 与 `*.down.sql`。
+2. 在 `manifest/migrations/` 新增成对迁移 SQL：`*.up.sql` 与 `*.down.sql`，版本前缀统一使用 `000001_变更说明` 这种六位顺序号格式。
 3. 迁移必须兼顾桌面 SQLite 和服务器 PostgreSQL 的当前策略；如果无法兼容，按 `manifest/migrations/sqlite/` 与 `manifest/migrations/pgsql/` 拆分维护，并保持同一版本文件名一致。
 4. 为每张表和每个字段补充中文说明：PostgreSQL 使用 `COMMENT ON TABLE` 与 `COMMENT ON COLUMN`；SQLite 在迁移 SQL 中使用 `-- 表注释：` 和 `-- 字段注释：` 注释块记录。
 5. 只要新增或修改了表、字段、索引、约束或注释，先在仓库根目录执行 `go run .codex/skills/gcoll-db-migrate-dao/scripts/reset_and_migrate.go --config manifest/config/config.yaml`。脚本必须从配置文件读取数据库连接，先将已应用迁移按版本倒序回滚到 `0`，再重新应用到最新版本。

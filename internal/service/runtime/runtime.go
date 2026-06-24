@@ -221,6 +221,7 @@ func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string
 		return nil, err
 	}
 	configSchema := emptyAnyMap(plugin.Manifest.ConfigSchema)
+	pointSchema := emptyAnyMap(plugin.Manifest.PointSchema)
 	events, err := s.recentDeviceEvents(ctx, deviceId)
 	if err != nil {
 		return nil, err
@@ -261,6 +262,7 @@ func (s *Service) GetDevicePluginConfigPage(ctx context.Context, deviceId string
 		},
 		Config:       mergeConfigDefaults(configSchema, config),
 		ConfigSchema: configSchema,
+		PointSchema:  pointSchema,
 		CustomConfigPage: commonv1.PluginCustomConfigPage{
 			Enabled: configPage.Enabled,
 			Entry:   configPage.Entry,

@@ -112,42 +112,30 @@
       </label>
       <label>
         端口
-        <input name="port" type="number" min="1" max="65535" />
+        <input name="port" type="number" min="1" max="65535" value="502" />
       </label>
       <label>
         Unit ID
-        <input name="unitId" type="number" min="0" max="247" />
+        <input name="unitId" type="number" min="0" max="247" value="1" />
       </label>
       <label>
         超时时间 ms
-        <input name="timeoutMs" type="number" min="100" max="60000" />
+        <input name="timeoutMs" type="number" min="100" max="60000" value="2000" />
       </label>
       <label>
         轮询间隔 ms
-        <input name="pollIntervalMs" type="number" min="100" max="86400000" />
+        <input name="pollIntervalMs" type="number" min="100" max="86400000" value="1000" />
       </label>
       <label>
         上报模式
         <select name="reportMode">
-          <option value="change">变化上报</option>
+          <option value="change" selected>变化上报</option>
           <option value="all">全部上报</option>
         </select>
       </label>
       <label>
-        线圈批量读取长度
-        <input name="maxCoilBatch" type="number" min="1" max="2000" />
-      </label>
-      <label>
-        寄存器批量读取长度
-        <input name="maxRegisterBatch" type="number" min="1" max="125" />
-      </label>
-      <label>
-        调试日志窗口
-        <input name="debugLogLimit" type="number" min="1" max="5000" />
-      </label>
-      <label>
         单请求重试次数
-        <input name="maxRetryPerRequest" type="number" min="1" max="5" />
+        <input name="maxRetryPerRequest" type="number" min="1" max="5" value="1" />
       </label>
       <p class="hint">此页面会直接调用主服务接口保存配置和测试连接，宿主只负责同步状态与展示运行信息。</p>
       <p id="status-message" class="status" aria-live="polite"></p>

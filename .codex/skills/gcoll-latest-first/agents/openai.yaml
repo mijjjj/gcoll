@@ -1,0 +1,7 @@
+interface:
+  display_name: "gcoll 最新优先"
+  short_description: "gcoll 项目最新需求下的重构、性能与架构优先规则"
+  default_prompt: "使用 $gcoll-latest-first 按最新需求直接重构 gcoll 代码，不默认保留旧兼容逻辑。"
+
+policy:
+  allow_implicit_invocation: true

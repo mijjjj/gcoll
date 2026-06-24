@@ -11,11 +11,13 @@ import {
   NInput,
   NInputNumber,
   NModal,
+  NPopover,
   NSelect,
   NSwitch,
   NTabPane,
   NTabs,
   NTag,
+  NTooltip,
   useDialog,
   useMessage,
   type DataTableColumns,
@@ -26,6 +28,7 @@ import PageHeader from '../components/common/PageHeader.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import { useConsoleStore } from '../stores/console'
 import type { DeviceGroup, DeviceItem, PointItem, RuntimeEvent } from '../api/console'
+import { getApiBasePath } from '../api/http'
 import { getCurrentLanguage } from '../i18n'
 
 interface ConfigField {
@@ -38,7 +41,102 @@ interface ConfigField {
   options: Array<{ label: string; value: string }>
 }
 
+type PointField = ConfigField
+
+interface PointAddressExample {
+  label: string
+  value: string
+  description: string
+  group: string
+}
+
+interface PointAddressExampleGroup {
+  label: string
+  items: PointAddressExample[]
+}
+
 type ContextTarget = { type: 'blank' } | { type: 'group'; group: DeviceGroup } | { type: 'device'; device: DeviceItem }
+
+function buildSchemaDefaults(schema: Record<string, unknown> | null | undefined) {
+  const defaults: Record<string, unknown> = {}
+  const properties = (schema?.properties ?? {}) as Record<string, Record<string, unknown>>
+  for (const [name, property] of Object.entries(properties)) {
+    if (Object.prototype.hasOwnProperty.call(property, 'default')) {
+      defaults[name] = property.default
+    }
+  }
+  return defaults
+}
+
+function injectPageScript(html: string, js: string) {
+  const bridgeScript = `<script>
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'gcoll:page-ready' }, '*')
+})
+<\/script>`
+  const script = `${bridgeScript}${js ? `\n<script>${js}<\/script>` : ''}`
+  if (html.includes('</body>')) {
+    return html.replace('</body>', `${script}\n  </body>`)
+  }
+  if (html.includes('</html>')) {
+    return html.replace('</html>', `${script}\n</html>`)
+  }
+  return `${html}\n${script}`
+}
+
+function buildPointAddressExamples(schema: Record<string, unknown> | null | undefined) {
+  const properties = (schema?.properties ?? {}) as Record<string, Record<string, unknown>>
+  const addressField = (properties.address ?? {}) as Record<string, unknown>
+  const ui = (addressField.ui ?? {}) as Record<string, unknown>
+  const examples = Array.isArray(ui.examples) ? ui.examples : []
+  return examples
+    .map((item) => {
+      const example = item as Record<string, unknown>
+      const value = String(example.value ?? '').trim()
+      if (!value) {
+        return null
+      }
+      return {
+        label: String(example.label ?? value),
+        value,
+        description: String(example.description ?? ''),
+        group: String(example.group ?? '常用示例'),
+      } satisfies PointAddressExample
+    })
+    .filter((item): item is PointAddressExample => Boolean(item))
+}
+
+function groupPointAddressExamples(examples: PointAddressExample[]) {
+  const groups = new Map<string, PointAddressExample[]>()
+  for (const example of examples) {
+    const items = groups.get(example.group) ?? []
+    items.push(example)
+    groups.set(example.group, items)
+  }
+  return Array.from(groups.entries()).map(([label, items]) => ({ label, items })) satisfies PointAddressExampleGroup[]
+}
+
+function buildPluginConfigApis(deviceId: string | undefined) {
+  const runtimeApiBase = consoleStore.overview?.runtime.apiBase?.trim()
+  const apiBase = runtimeApiBase ? `${runtimeApiBase.replace(/\/+$/, '')}/api/v1` : getApiBasePath()
+  if (!deviceId) {
+    return {
+      getConfig: '',
+      saveConfig: '',
+      testConfig: '',
+    }
+  }
+  const basePath = `${apiBase}/devices/${deviceId}/protocol-config`
+  return {
+    getConfig: basePath,
+    saveConfig: basePath,
+    testConfig: `${basePath}/test`,
+  }
+}
+
+function toMessageData<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value ?? null)) as T
+}
 
 const consoleStore = useConsoleStore()
 const message = useMessage()
@@ -73,13 +171,14 @@ const pointForm = reactive({
   valueType: 'float',
   unit: '',
   enabled: true,
-  metadataText: '{}',
 })
+const pointMetadataDraft = ref<Record<string, unknown>>({})
 
 const selectedDevice = computed(() => consoleStore.selectedDevice)
 const configPage = computed(() => consoleStore.devicePluginConfigPage)
 const customConfigPage = computed(() => configPage.value?.customConfigPage)
 const customPointPage = computed(() => configPage.value?.customPointPage)
+const pointSchema = computed(() => (configPage.value?.pointSchema ?? {}) as Record<string, unknown>)
 const useCustomConfigPage = computed(() => Boolean(customConfigPage.value?.enabled && customConfigPage.value?.html))
 const useCustomPointPage = computed(() => Boolean(customPointPage.value?.enabled && customPointPage.value?.html))
 const pluginOptions = computed(() => consoleStore.plugins.filter((plugin) => plugin.type === 'southbound').map((plugin) => ({ label: plugin.name, value: plugin.id })))
@@ -115,7 +214,17 @@ const contextOptions = computed<DropdownOption[]>(() => {
 
 const configFields = computed<ConfigField[]>(() => {
   const schema = configPage.value?.configSchema ?? {}
-  const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>
+  return buildSchemaFields(schema)
+})
+
+const pointFields = computed<PointField[]>(() => {
+  const schema = pointSchema.value ?? {}
+  const hiddenFields = new Set(['name', 'description', 'address', 'valueType', 'unit', 'enabled'])
+  return buildSchemaFields(schema).filter((field) => !hiddenFields.has(field.name))
+})
+
+function buildSchemaFields(schema: Record<string, unknown> | null | undefined) {
+  const properties = (schema?.properties ?? {}) as Record<string, Record<string, unknown>>
   return Object.entries(properties).map(([name, property]) => {
     const ui = (property.ui ?? {}) as Record<string, unknown>
     const enumValues = Array.isArray(property.enum) ? property.enum : []
@@ -129,20 +238,18 @@ const configFields = computed<ConfigField[]>(() => {
       options: enumValues.map((item) => ({ label: String(item), value: String(item) })),
     }
   })
-})
+}
 
 const configSrcdoc = computed(() => {
   const page = customConfigPage.value
   if (!page?.html) return ''
-  const script = page.js ? `<script>${page.js}<\/script>` : ''
-  return `${page.html}\n${script}`
+  return injectPageScript(page.html, page.js)
 })
 
 const pointSrcdoc = computed(() => {
   const page = customPointPage.value
   if (!page?.html) return ''
-  const script = page.js ? `<script>${page.js}<\/script>` : ''
-  return `${page.html}\n${script}`
+  return injectPageScript(page.html, page.js)
 })
 
 const pointColumns = computed<DataTableColumns<PointItem>>(() => [
@@ -157,13 +264,6 @@ const pointColumns = computed<DataTableColumns<PointItem>>(() => [
     render: (row) => h(NTag, { size: 'small', type: row.enabled ? 'success' : 'default', bordered: false }, { default: () => (row.enabled ? '启用' : '停用') }),
   },
   {
-    title: 'metadata',
-    key: 'metadata',
-    minWidth: 220,
-    ellipsis: { tooltip: true },
-    render: (row) => JSON.stringify(row.metadata ?? {}),
-  },
-  {
     title: '操作',
     key: 'actions',
     width: 126,
@@ -174,6 +274,13 @@ const pointColumns = computed<DataTableColumns<PointItem>>(() => [
   },
 ])
 
+const pointAddressExamples = computed(() => buildPointAddressExamples(pointSchema.value))
+const pointAddressExampleGroups = computed(() => groupPointAddressExamples(pointAddressExamples.value))
+const pointAddressDescription = computed(() => {
+  const properties = (pointSchema.value?.properties ?? {}) as Record<string, Record<string, unknown>>
+  return String(properties.address?.description ?? '')
+})
+
 const eventColumns: DataTableColumns<RuntimeEvent> = [
   { title: '时间', key: 'time', minWidth: 160 },
   { title: '级别', key: 'level', width: 80 },
@@ -182,9 +289,10 @@ const eventColumns: DataTableColumns<RuntimeEvent> = [
 ]
 
 watch(
-  () => configPage.value?.config,
-  (config) => {
-    configDraft.value = { ...(config ?? {}) }
+  () => configPage.value,
+  (page) => {
+    const defaults = buildSchemaDefaults((page?.configSchema ?? {}) as Record<string, unknown>)
+    configDraft.value = { ...defaults, ...(page?.config ?? {}) }
     nextTick(postConfigToIframe)
   },
   { immediate: true },
@@ -237,9 +345,27 @@ function fieldBool(name: string, defaultValue: unknown) {
   return Boolean(configDraft.value[name] ?? defaultValue ?? false)
 }
 
+function pointFieldNumber(name: string, defaultValue: unknown) {
+  const value = pointMetadataDraft.value[name] ?? defaultValue
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function pointFieldString(name: string, defaultValue: unknown) {
+  return String(pointMetadataDraft.value[name] ?? defaultValue ?? '')
+}
+
+function pointFieldBool(name: string, defaultValue: unknown) {
+  return Boolean(pointMetadataDraft.value[name] ?? defaultValue ?? false)
+}
+
 function setConfigField(name: string, value: unknown) {
   configDraft.value = { ...configDraft.value, [name]: value }
   postConfigToIframe()
+}
+
+function setPointField(name: string, value: unknown) {
+  pointMetadataDraft.value = { ...pointMetadataDraft.value, [name]: value }
 }
 
 function openContextMenu(event: MouseEvent, target: ContextTarget) {
@@ -349,12 +475,13 @@ function openPointModal(index = -1) {
   pointForm.valueType = point?.valueType ?? 'float'
   pointForm.unit = point?.unit ?? ''
   pointForm.enabled = point?.enabled ?? true
-  pointForm.metadataText = JSON.stringify(point?.metadata ?? {}, null, 2)
+  const defaults = buildSchemaDefaults(pointSchema.value)
+  pointMetadataDraft.value = { ...defaults, ...(point?.metadata ?? {}) }
   showPointModal.value = true
 }
 
 function savePointDraft() {
-  const metadata = parseJson(pointForm.metadataText)
+  const metadata = compactMetadata(pointMetadataDraft.value)
   const current = editingPointIndex.value >= 0 ? pointDraft.value[editingPointIndex.value] : null
   const point: PointItem = {
     id: current?.id ?? '',
@@ -377,6 +504,10 @@ function savePointDraft() {
   showPointModal.value = false
 }
 
+function applyPointAddressExample(value: string) {
+  pointForm.address = value
+}
+
 function removePoint(index: number) {
   pointDraft.value.splice(index, 1)
 }
@@ -386,24 +517,34 @@ async function savePoints() {
   message.success('点位表已保存')
 }
 
-function parseJson(value: string): Record<string, unknown> {
-  const parsed = JSON.parse(value || '{}')
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-    throw new Error('JSON 必须是对象')
+function compactMetadata(values: Record<string, unknown>) {
+  const metadata: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(values ?? {})) {
+    if (value === null || value === undefined) {
+      continue
+    }
+    if (typeof value === 'string' && value.trim() === '') {
+      continue
+    }
+    metadata[key] = value
   }
-  return parsed as Record<string, unknown>
+  return metadata
 }
 
 function postConfigToIframe() {
+  const currentDevice = configPage.value?.device ?? selectedDevice.value
+  const deviceId = currentDevice?.id
+  const runtimeApiBase = consoleStore.overview?.runtime.apiBase?.trim()
   iframeRef.value?.contentWindow?.postMessage({
     type: 'gcoll:init',
     payload: {
-      apiBase: '/api/v1',
+      apiBase: runtimeApiBase ? `${runtimeApiBase.replace(/\/+$/, '')}/api/v1` : getApiBasePath(),
+      apis: toMessageData(buildPluginConfigApis(deviceId)),
       language: getCurrentLanguage(),
-      config: configDraft.value,
-      schema: configPage.value?.configSchema ?? {},
-      device: selectedDevice.value,
-      plugin: configPage.value?.plugin,
+      config: toMessageData(configDraft.value),
+      schema: toMessageData(configPage.value?.configSchema ?? {}),
+      device: toMessageData(currentDevice),
+      plugin: toMessageData(configPage.value?.plugin),
       readonly: false,
     },
   }, '*')
@@ -412,7 +553,9 @@ function postConfigToIframe() {
 function handlePluginMessage(event: MessageEvent) {
   const data = event.data as { type?: string; payload?: unknown }
   if (!data?.type) return
-  if (data.type === 'gcoll:config-change' && data.payload && typeof data.payload === 'object') {
+  if (data.type === 'gcoll:page-ready' || data.type === 'gcoll:request-init') {
+    postConfigToIframe()
+  } else if (data.type === 'gcoll:config-change' && data.payload && typeof data.payload === 'object') {
     configDraft.value = { ...(data.payload as Record<string, unknown>) }
   } else if (data.type === 'gcoll:config-saved') {
     void consoleStore.loadSelectedDeviceDetails()
@@ -643,7 +786,36 @@ function handlePluginMessage(event: MessageEvent) {
     <NModal v-model:show="showPointModal" preset="dialog" :title="editingPointIndex >= 0 ? '编辑点位' : '新增点位'" positive-text="保存" negative-text="取消" @positive-click="savePointDraft">
       <NForm label-placement="top">
         <NFormItem label="点位名称"><NInput v-model:value="pointForm.name" /></NFormItem>
-        <NFormItem label="地址"><NInput v-model:value="pointForm.address" /></NFormItem>
+        <NFormItem :feedback="pointAddressDescription">
+          <template #label>
+            <span>地址</span>
+          </template>
+          <NInput v-model:value="pointForm.address">
+            <template v-if="pointAddressExamples.length" #suffix>
+              <NPopover trigger="click" placement="bottom-end" :show-arrow="false">
+                <template #trigger>
+                  <button type="button" class="point-example-trigger">点位示例</button>
+                </template>
+                <div class="point-example-popover">
+                  <div class="point-example-title">设备支持的地址示例</div>
+                  <div v-for="group in pointAddressExampleGroups" :key="group.label" class="point-example-group">
+                    <strong class="point-example-group__title">{{ group.label }}</strong>
+                    <div class="point-example-list">
+                      <NTooltip v-for="example in group.items" :key="example.value" trigger="hover">
+                        <template #trigger>
+                          <button type="button" class="point-example-chip" @click="applyPointAddressExample(example.value)">
+                            {{ example.value }}
+                          </button>
+                        </template>
+                        {{ example.description || example.label }}
+                      </NTooltip>
+                    </div>
+                  </div>
+                </div>
+              </NPopover>
+            </template>
+          </NInput>
+        </NFormItem>
         <NFormItem label="值类型">
           <NSelect
             v-model:value="pointForm.valueType"
@@ -652,9 +824,91 @@ function handlePluginMessage(event: MessageEvent) {
         </NFormItem>
         <NFormItem label="单位"><NInput v-model:value="pointForm.unit" /></NFormItem>
         <NFormItem label="说明"><NInput v-model:value="pointForm.description" /></NFormItem>
-        <NFormItem label="metadata JSON"><NInput v-model:value="pointForm.metadataText" type="textarea" :autosize="{ minRows: 4, maxRows: 8 }" /></NFormItem>
+        <NFormItem v-for="field in pointFields" :key="field.name" :label="field.title" :feedback="field.description">
+          <NInputNumber
+            v-if="field.type === 'number'"
+            class="full-input"
+            :value="pointFieldNumber(field.name, field.defaultValue)"
+            @update:value="(value) => setPointField(field.name, value)"
+          />
+          <NSwitch
+            v-else-if="field.component === 'switch' || field.type === 'boolean'"
+            :value="pointFieldBool(field.name, field.defaultValue)"
+            @update:value="(value) => setPointField(field.name, value)"
+          />
+          <NSelect
+            v-else-if="field.component === 'select' || field.options.length"
+            :value="pointFieldString(field.name, field.defaultValue)"
+            :options="field.options"
+            @update:value="(value) => setPointField(field.name, value)"
+          />
+          <NInput
+            v-else
+            :type="field.component === 'textarea' ? 'textarea' : field.component === 'password' ? 'password' : 'text'"
+            :value="pointFieldString(field.name, field.defaultValue)"
+            @update:value="(value) => setPointField(field.name, value)"
+          />
+        </NFormItem>
         <NFormItem label="启用"><NSwitch v-model:value="pointForm.enabled" /></NFormItem>
       </NForm>
     </NModal>
   </div>
 </template>
+
+<style scoped>
+.point-example-popover {
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.point-example-title {
+  font-size: 13px;
+  color: inherit;
+  opacity: 0.72;
+}
+
+.point-example-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.point-example-group__title {
+  font-size: 12px;
+  color: inherit;
+}
+
+.point-example-trigger {
+  border: none;
+  background: transparent;
+  color: #0284c7;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.point-example-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.point-example-chip {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.point-example-chip:hover {
+  border-color: #0ea5e9;
+  color: #0284c7;
+  background: rgba(14, 165, 233, 0.12);
+}
+</style>

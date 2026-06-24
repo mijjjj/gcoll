@@ -74,6 +74,7 @@ export interface DevicePluginConfigPage {
   device: DeviceItem
   config: Record<string, unknown>
   configSchema: Record<string, unknown>
+  pointSchema: Record<string, unknown>
   customConfigPage: PluginAssetPage
   customPointPage: PluginAssetPage
   configured: boolean

@@ -215,7 +215,9 @@ func resetMigrations(ctx context.Context, db gdb.DB, root string, dbType string)
 		if err := executeMigrationFile(ctx, db, downFile); err != nil {
 			return gerror.Wrapf(err, "执行回滚迁移失败: %s", version)
 		}
-		if _, err := db.Exec(ctx, "DELETE FROM schema_migrations WHERE version = ?", version); err != nil {
+		if _, err := db.Model("schema_migrations").Ctx(ctx).
+			WhereIn("version", storagesvc.MigrationVersionAliases(version)).
+			Delete(); err != nil {
 			return gerror.Wrapf(err, "删除迁移记录失败: %s", version)
 		}
 		fmt.Printf("已回滚迁移: %s\n", version)
@@ -229,9 +231,14 @@ func appliedVersions(ctx context.Context, db gdb.DB) ([]string, error) {
 		return nil, gerror.Wrap(err, "读取已应用迁移失败")
 	}
 	versions := make([]string, 0, len(array))
+	seen := make(map[string]struct{}, len(array))
 	for _, item := range array {
-		version := strings.TrimSpace(item.String())
+		version := storagesvc.CanonicalMigrationVersion(strings.TrimSpace(item.String()))
 		if version != "" {
+			if _, ok := seen[version]; ok {
+				continue
+			}
+			seen[version] = struct{}{}
 			versions = append(versions, version)
 		}
 	}

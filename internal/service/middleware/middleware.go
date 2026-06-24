@@ -4,6 +4,7 @@ import (
 	"context"
 	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -23,6 +24,24 @@ var streamContentTypes = []string{
 	contentTypeMixedReplace,
 }
 
+var allowHeaders = []string{
+	"Accept",
+	"Accept-Language",
+	"Authorization",
+	"Content-Type",
+	"Origin",
+	"X-API-Key",
+}
+
+var allowMethods = []string{
+	http.MethodGet,
+	http.MethodPost,
+	http.MethodPut,
+	http.MethodPatch,
+	http.MethodDelete,
+	http.MethodOptions,
+}
+
 // Service 提供 HTTP 中间件能力。
 type Service struct{}
 
@@ -37,6 +56,28 @@ type HandlerResponse struct {
 	Code    int    `json:"code"    dc:"业务错误码"`
 	Message string `json:"message" dc:"响应消息"`
 	Data    any    `json:"data"    dc:"业务数据"`
+}
+
+// CORS 统一处理跨域请求和预检请求。
+func (s *Service) CORS(r *ghttp.Request) {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin != "" {
+		r.Response.Header().Set("Access-Control-Allow-Origin", origin)
+		r.Response.Header().Set("Vary", "Origin")
+	} else {
+		r.Response.Header().Set("Access-Control-Allow-Origin", "*")
+	}
+	r.Response.Header().Set("Access-Control-Allow-Methods", strings.Join(allowMethods, ", "))
+	r.Response.Header().Set("Access-Control-Allow-Headers", strings.Join(allowHeaders, ", "))
+	r.Response.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type")
+	r.Response.Header().Set("Access-Control-Max-Age", "86400")
+
+	if r.Method == http.MethodOptions {
+		r.Response.WriteStatusExit(http.StatusNoContent)
+		return
+	}
+
+	r.Middleware.Next()
 }
 
 // Response 统一处理标准路由返回结果和错误。

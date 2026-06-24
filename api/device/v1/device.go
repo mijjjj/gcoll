@@ -18,6 +18,7 @@ type DevicePluginConfigPageRes struct {
 	Device           commonv1.DeviceItem             `json:"device"`
 	Config           map[string]any                  `json:"config"`
 	ConfigSchema     map[string]any                  `json:"configSchema"`
+	PointSchema      map[string]any                  `json:"pointSchema"`
 	CustomConfigPage commonv1.PluginCustomConfigPage `json:"customConfigPage"`
 	CustomPointPage  commonv1.PluginCustomPointPage  `json:"customPointPage"`
 	Configured       bool                            `json:"configured"`

@@ -60,6 +60,7 @@ type Manifest struct {
 	Capabilities     []string          `yaml:"capabilities"  json:"capabilities"`
 	Permissions      []string          `yaml:"permissions"   json:"permissions"`
 	ConfigSchema     map[string]any    `yaml:"configSchema"  json:"configSchema"`
+	PointSchema      map[string]any    `yaml:"pointSchema"   json:"pointSchema"`
 	CustomConfigPage CustomAssetPage   `yaml:"customConfigPage" json:"customConfigPage"`
 	CustomPointPage  CustomAssetPage   `yaml:"customPointPage"  json:"customPointPage"`
 }
@@ -232,9 +233,17 @@ func (s *Service) List(ctx context.Context) ([]commonv1.PluginItem, error) {
 		return nil, err
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	items := make([]commonv1.PluginItem, 0, len(s.registry))
+	plugins := make([]*RuntimePlugin, 0, len(s.registry))
 	for _, plugin := range s.registry {
+		plugins = append(plugins, plugin)
+	}
+	s.mu.Unlock()
+
+	items := make([]commonv1.PluginItem, 0, len(plugins))
+	for _, plugin := range plugins {
+		if err := s.refreshPluginManifest(plugin); err != nil {
+			return nil, err
+		}
 		items = append(items, toPluginItem(plugin))
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -249,10 +258,13 @@ func (s *Service) Plugin(ctx context.Context, pluginID string) (*RuntimePlugin, 
 		return nil, err
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	plugin := s.registry[pluginID]
+	s.mu.Unlock()
 	if plugin == nil {
 		return nil, gerror.Newf("插件未加载: %s", pluginID)
+	}
+	if err := s.refreshPluginManifest(plugin); err != nil {
+		return nil, err
 	}
 	return plugin, nil
 }
@@ -342,6 +354,20 @@ func (s *Service) ValidateRuntimeConfig(ctx context.Context, pluginID string, co
 		}
 		if strings.TrimSpace(point.Address) == "" {
 			return gerror.Newf("点位地址不能为空: %s", point.Id)
+		}
+	}
+	if pluginID == modbustcp.PluginID {
+		if _, err := modbusConnectionConfig(config); err != nil {
+			return err
+		}
+		for _, point := range points {
+			modbusPoint, parseErr := modbustcp.PointFromCommonItem(point)
+			if parseErr != nil {
+				return gerror.Wrapf(parseErr, "解析 Modbus TCP 点位失败: %s", point.Id)
+			}
+			if validateErr := modbusPoint.Validate(); validateErr != nil {
+				return gerror.Wrapf(validateErr, "校验 Modbus TCP 点位失败: %s", point.Id)
+			}
 		}
 	}
 	return nil
@@ -1258,6 +1284,26 @@ func readPluginAsset(pluginDir string, assetPath string) (string, error) {
 		return "", gerror.Wrapf(err, "读取插件页面资源失败: %s", assetPath)
 	}
 	return string(content), nil
+}
+
+func (s *Service) refreshPluginManifest(plugin *RuntimePlugin) error {
+	if plugin == nil {
+		return gerror.New("插件运行时记录不能为空")
+	}
+	manifest, err := readManifest(filepath.Join(plugin.Directory, "plugin.yaml"))
+	if err != nil {
+		return err
+	}
+	if err := validateManifest(manifest); err != nil {
+		return err
+	}
+	if manifest.Id != plugin.Manifest.Id {
+		return gerror.Newf("插件目录中的清单 ID 已变化，必须重新导入或重启宿主: %s -> %s", plugin.Manifest.Id, manifest.Id)
+	}
+	s.mu.Lock()
+	plugin.Manifest = *manifest
+	s.mu.Unlock()
+	return nil
 }
 
 func validateConfigSchema(schema map[string]any, config map[string]any) error {

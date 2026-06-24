@@ -46,11 +46,26 @@ function notifyHttpError(message: string) {
   httpErrorNotifier?.(message)
 }
 
+function resolveApiBasePath() {
+  if (typeof window === 'undefined') {
+    return 'http://127.0.0.1:8260/api/v1'
+  }
+  const protocol = window.location.protocol.toLowerCase()
+  if (protocol === 'http:' || protocol === 'https:') {
+    return `${window.location.origin}/api/v1`
+  }
+  return 'http://127.0.0.1:8260/api/v1'
+}
+
+export function getApiBasePath() {
+  return resolveApiBasePath()
+}
+
 function buildRequestUrl(path: string, language: string) {
   const [pathname, rawQuery = ''] = path.split('?', 2)
   const searchParams = new URLSearchParams(rawQuery)
   searchParams.set('lang', language)
-  return `/api/v1${pathname}?${searchParams.toString()}`
+  return `${resolveApiBasePath()}${pathname}?${searchParams.toString()}`
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<ApiResponse<T> | null> {

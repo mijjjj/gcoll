@@ -332,25 +332,33 @@ func (s *Service) SavePluginConfig(ctx context.Context, deviceId string, config 
 	}
 
 	if err := dao.Devices.Transaction(ctx, func(ctx context.Context, _ gdb.TX) error {
-		configData := do.PluginDeviceConfigs{
-			Id:         current.Id,
-			DeviceId:   deviceId,
-			PluginId:   device.PluginId,
-			Version:    nextVersion,
-			ConfigJson: configJSON,
-			ReportMode: device.ReportMode,
-			Enabled:    boolInt(device.Enabled == 1),
-			Active:     1,
-		}
 		if currentExists {
+			updateData := do.PluginDeviceConfigs{
+				Version:    nextVersion,
+				ConfigJson: configJSON,
+				ReportMode: device.ReportMode,
+				Enabled:    boolInt(device.Enabled == 1),
+				Active:     1,
+			}
 			if _, err := dao.PluginDeviceConfigs.Ctx(ctx).
+				OmitNilData().
 				Where(do.PluginDeviceConfigs{Id: current.Id}).
-				Data(configData).
+				Data(updateData).
 				Update(); err != nil {
 				return gerror.Wrap(err, "保存设备插件配置失败")
 			}
 		} else {
-			if _, err := dao.PluginDeviceConfigs.Ctx(ctx).Data(configData).Insert(); err != nil {
+			insertData := do.PluginDeviceConfigs{
+				Id:         current.Id,
+				DeviceId:   deviceId,
+				PluginId:   device.PluginId,
+				Version:    nextVersion,
+				ConfigJson: configJSON,
+				ReportMode: device.ReportMode,
+				Enabled:    boolInt(device.Enabled == 1),
+				Active:     1,
+			}
+			if _, err := dao.PluginDeviceConfigs.Ctx(ctx).Data(insertData).Insert(); err != nil {
 				return gerror.Wrap(err, "保存设备插件配置失败")
 			}
 		}
@@ -382,6 +390,7 @@ func (s *Service) devicePoints(ctx context.Context, deviceId string) ([]commonv1
 	}
 	items := make([]commonv1.PointItem, 0, len(points))
 	for _, point := range points {
+		metadata := sanitizeDevicePointMetadata(point.PluginId, anyMapFromJSON(point.MetadataJson))
 		items = append(items, commonv1.PointItem{
 			Id:          point.Id,
 			DeviceId:    point.DeviceId,
@@ -393,10 +402,27 @@ func (s *Service) devicePoints(ctx context.Context, deviceId string) ([]commonv1
 			Unit:        point.Unit,
 			Enabled:     point.Enabled == 1,
 			Tags:        stringMapFromJSON(point.TagsJson),
-			Metadata:    anyMapFromJSON(point.MetadataJson),
+			Metadata:    metadata,
 		})
 	}
 	return items, nil
+}
+
+func sanitizeDevicePointMetadata(pluginID string, values map[string]any) map[string]any {
+	if values == nil {
+		return map[string]any{}
+	}
+	if pluginID != "com.gcoll.modbus-tcp" {
+		return values
+	}
+	result := make(map[string]any, len(values))
+	for key, value := range values {
+		if key == "area" {
+			continue
+		}
+		result[key] = value
+	}
+	return result
 }
 
 // Get 返回指定设备。

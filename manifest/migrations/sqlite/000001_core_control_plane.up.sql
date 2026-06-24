@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS plugins (
   description TEXT NOT NULL DEFAULT '',
   enabled INTEGER NOT NULL DEFAULT 1,
   installed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   CHECK (type IN ('system', 'southbound', 'northbound')),
   CHECK (runtime IN ('process')),
   CHECK (protocol IN ('grpc')),
@@ -53,8 +53,8 @@ CREATE TABLE IF NOT EXISTS plugin_versions (
   checksum TEXT NOT NULL DEFAULT '',
   active INTEGER NOT NULL DEFAULT 0,
   installed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   CHECK (active IN (0, 1))
 );
 
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS plugin_config_schemas (
   plugin_version_id TEXT NOT NULL,
   schema_version INTEGER NOT NULL DEFAULT 1,
   schema_json TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 表注释：plugin_config_schemas：插件配置结构表，保存插件版本对应的配置表单和服务端校验结构。
@@ -99,8 +99,8 @@ CREATE TABLE IF NOT EXISTS device_groups (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 表注释：device_groups：设备分组表，用于控制台设备列表归类。
@@ -122,8 +122,8 @@ CREATE TABLE IF NOT EXISTS devices (
   last_seen_at TEXT,
   description TEXT NOT NULL DEFAULT '',
   metadata_json TEXT NOT NULL DEFAULT '{}',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   CHECK (status IN ('online', 'offline', 'disabled', 'error')),
   CHECK (enabled IN (0, 1)),
   CHECK (report_mode IN ('change', 'all')),
@@ -163,8 +163,8 @@ CREATE TABLE IF NOT EXISTS plugin_device_configs (
   report_mode TEXT NOT NULL DEFAULT 'change',
   enabled INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   CHECK (report_mode IN ('change', 'all')),
   CHECK (enabled IN (0, 1)),
   CHECK (active IN (0, 1)),
@@ -195,7 +195,7 @@ CREATE TABLE IF NOT EXISTS plugin_device_config_versions (
   version INTEGER NOT NULL,
   config_json TEXT NOT NULL,
   change_note TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (config_id) REFERENCES plugin_device_configs(id),
   FOREIGN KEY (device_id) REFERENCES devices(id)
 );
@@ -222,8 +222,8 @@ CREATE TABLE IF NOT EXISTS device_points (
   enabled INTEGER NOT NULL DEFAULT 1,
   tags_json TEXT NOT NULL DEFAULT '{}',
   metadata_json TEXT NOT NULL DEFAULT '{}',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   CHECK (value_type IN ('bool', 'int', 'float', 'string', 'bytes', 'datetime', 'json')),
   CHECK (enabled IN (0, 1)),
   FOREIGN KEY (device_id) REFERENCES devices(id)
@@ -258,7 +258,7 @@ CREATE TABLE IF NOT EXISTS device_point_versions (
   version INTEGER NOT NULL,
   snapshot_json TEXT NOT NULL,
   change_note TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (point_id) REFERENCES device_points(id),
   FOREIGN KEY (device_id) REFERENCES devices(id)
 );
@@ -283,8 +283,8 @@ CREATE TABLE IF NOT EXISTS collection_tasks (
   rule_hit_rate TEXT NOT NULL DEFAULT '0%',
   rate TEXT NOT NULL DEFAULT '0 条/秒',
   last_collected_at TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   CHECK (report_mode IN ('change', 'all')),
   CHECK (status IN ('running', 'stopped', 'disabled', 'error')),
   FOREIGN KEY (device_id) REFERENCES devices(id)
@@ -319,7 +319,7 @@ CREATE TABLE IF NOT EXISTS runtime_events (
   task_id TEXT,
   message TEXT NOT NULL,
   trace_id TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   CHECK (level IN ('DEBUG', 'INFO', 'WARN', 'ERROR'))
 );
 

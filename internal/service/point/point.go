@@ -59,6 +59,7 @@ func (s *Service) Create(ctx context.Context, req *devicev1.CreateDevicePointReq
 	if device.PluginId != req.PluginId {
 		return nil, gerror.Newf("点位插件与设备插件不一致: %s", req.PluginId)
 	}
+	req.Metadata = sanitizePointMetadata(req.PluginId, emptyAnyMap(req.Metadata))
 
 	pointId := strings.TrimSpace(req.Id)
 	if pointId == "" {
@@ -68,7 +69,7 @@ func (s *Service) Create(ctx context.Context, req *devicev1.CreateDevicePointReq
 	if err != nil {
 		return nil, gerror.Wrap(err, "序列化点位标签失败")
 	}
-	metadataJSON, err := json.Marshal(emptyAnyMap(req.Metadata))
+	metadataJSON, err := json.Marshal(req.Metadata)
 	if err != nil {
 		return nil, gerror.Wrap(err, "序列化点位扩展信息失败")
 	}
@@ -93,7 +94,7 @@ func (s *Service) Create(ctx context.Context, req *devicev1.CreateDevicePointReq
 		Unit:        req.Unit,
 		Enabled:     req.Enabled,
 		Tags:        emptyStringMap(req.Tags),
-		Metadata:    emptyAnyMap(req.Metadata),
+		Metadata:    req.Metadata,
 	}
 	currentPoints, err := s.currentPoints(ctx, req.DeviceId)
 	if err != nil {
@@ -156,7 +157,7 @@ func (s *Service) ReplaceByDevice(ctx context.Context, deviceId string, items []
 			item.Id = "pt-" + guid.S()
 		}
 		item.Tags = emptyStringMap(item.Tags)
-		item.Metadata = emptyAnyMap(item.Metadata)
+		item.Metadata = sanitizePointMetadata(item.PluginId, emptyAnyMap(item.Metadata))
 		normalized = append(normalized, item)
 	}
 	config, err := s.currentConfig(ctx, device.Id, device.PluginId)
@@ -184,7 +185,7 @@ func (s *Service) ReplaceByDevice(ctx context.Context, deviceId string, items []
 			if err != nil {
 				return gerror.Wrap(err, "序列化点位标签失败")
 			}
-			metadataJSON, err := json.Marshal(emptyAnyMap(item.Metadata))
+			metadataJSON, err := json.Marshal(item.Metadata)
 			if err != nil {
 				return gerror.Wrap(err, "序列化点位扩展信息失败")
 			}
@@ -302,6 +303,7 @@ func insertPointVersion(ctx context.Context, point commonv1.PointItem, note stri
 }
 
 func toPointItem(point entity.DevicePoints) commonv1.PointItem {
+	metadata := sanitizePointMetadata(point.PluginId, anyMapFromJSON(point.MetadataJson))
 	return commonv1.PointItem{
 		Id:          point.Id,
 		DeviceId:    point.DeviceId,
@@ -313,7 +315,7 @@ func toPointItem(point entity.DevicePoints) commonv1.PointItem {
 		Unit:        point.Unit,
 		Enabled:     point.Enabled == 1,
 		Tags:        stringMapFromJSON(point.TagsJson),
-		Metadata:    anyMapFromJSON(point.MetadataJson),
+		Metadata:    metadata,
 	}
 }
 
@@ -347,6 +349,23 @@ func emptyAnyMap(values map[string]any) map[string]any {
 		return map[string]any{}
 	}
 	return values
+}
+
+func sanitizePointMetadata(pluginID string, values map[string]any) map[string]any {
+	if values == nil {
+		return map[string]any{}
+	}
+	if pluginID != "com.gcoll.modbus-tcp" {
+		return values
+	}
+	result := make(map[string]any, len(values))
+	for key, value := range values {
+		if key == "area" {
+			continue
+		}
+		result[key] = value
+	}
+	return result
 }
 
 func ensurePointID(pointID string) error {

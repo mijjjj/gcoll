@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	commonv1 "github.com/mijjjj/gcoll/api/common/v1"
 )
 
 const (
@@ -305,4 +308,118 @@ func quantityForValueType(valueType string) uint16 {
 	default:
 		return 1
 	}
+}
+
+// ParseAddressSpec 解析地址字段中的“读取功能:地址”格式。
+func ParseAddressSpec(value string) (area string, address uint16, err error) {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return "", 0, fmt.Errorf("点位地址不能为空")
+	}
+	parts := strings.SplitN(text, ":", 2)
+	if len(parts) != 2 {
+		return "", 0, fmt.Errorf("点位地址格式无效，必须使用 读取功能:地址，例如 holding_register:0")
+	}
+	area, ok := canonicalArea(parts[0])
+	if !ok {
+		return "", 0, fmt.Errorf("点位地址中的读取功能无效: %s", strings.TrimSpace(parts[0]))
+	}
+	number, parseErr := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 16)
+	if parseErr != nil {
+		return "", 0, fmt.Errorf("点位地址中的寄存器地址无效: %s", strings.TrimSpace(parts[1]))
+	}
+	return area, uint16(number), nil
+}
+
+// PointFromCommonItem 将宿主通用点位转换为 Modbus 点位。
+func PointFromCommonItem(item commonv1.PointItem) (Point, error) {
+	metadata := emptyStringMap(item.Metadata)
+	area, address, err := ParseAddressSpec(item.Address)
+	if err != nil {
+		return Point{}, err
+	}
+	point := Point{
+		ID:          item.Id,
+		DeviceID:    item.DeviceId,
+		PluginID:    item.PluginId,
+		Name:        item.Name,
+		Description: item.Description,
+		Address:     address,
+		Area:        area,
+		ValueType:   metadataString(metadata, "valueType", item.ValueType),
+		Mode:        metadataString(metadata, "mode", ""),
+		Enabled:     item.Enabled,
+		Quantity:    metadataUint16(metadata, "quantity"),
+		Scale:       metadataFloat64(metadata, "scale"),
+		Offset:      metadataFloat64(metadata, "offset"),
+		ByteOrder:   metadataString(metadata, "byteOrder", ""),
+		WordOrder:   metadataString(metadata, "wordOrder", ""),
+		Tags:        item.Tags,
+		Metadata:    metadata,
+	}
+	return point.Normalize(), nil
+}
+
+func canonicalArea(value string) (string, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	normalized = strings.ReplaceAll(normalized, " ", "_")
+	switch normalized {
+	case "coil", "coils", "01", "fc01", "read_coils":
+		return areaCoil, true
+	case "discrete_input", "discrete_inputs", "02", "fc02", "read_discrete_inputs":
+		return areaDiscreteInput, true
+	case "holding_register", "holding_registers", "03", "fc03", "read_holding_registers", "hr":
+		return areaHoldingRegister, true
+	case "input_register", "input_registers", "04", "fc04", "read_input_registers", "ir":
+		return areaInputRegister, true
+	default:
+		return "", false
+	}
+}
+
+func metadataString(metadata map[string]string, key string, fallback string) string {
+	value := strings.TrimSpace(metadata[key])
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func metadataUint16(metadata map[string]string, key string) uint16 {
+	value := strings.TrimSpace(metadata[key])
+	if value == "" {
+		return 0
+	}
+	number, err := strconv.ParseUint(value, 10, 16)
+	if err != nil {
+		return 0
+	}
+	return uint16(number)
+}
+
+func metadataFloat64(metadata map[string]string, key string) float64 {
+	value := strings.TrimSpace(metadata[key])
+	if value == "" {
+		return 0
+	}
+	number, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0
+	}
+	return number
+}
+
+func emptyStringMap(values map[string]any) map[string]string {
+	if len(values) == 0 {
+		return map[string]string{}
+	}
+	result := make(map[string]string, len(values))
+	for key, value := range values {
+		if value == nil {
+			continue
+		}
+		result[key] = strings.TrimSpace(fmt.Sprint(value))
+	}
+	return result
 }

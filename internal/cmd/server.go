@@ -50,6 +50,7 @@ func registerRoutes(s *ghttp.Server) {
 	)
 
 	s.Group("/api/v1", func(group *ghttp.RouterGroup) {
+		group.Middleware(middlewareService.CORS)
 		group.Middleware(middlewareService.Response)
 		group.Bind(
 			runtimeController,
